@@ -9,9 +9,7 @@
 #include <sys/types.h>
 
 /*
- *  kbhit()  --  a keyboard lookahead monitor
- *
- *  returns the number of characters available to read.
+ *  kbhit()  --  a keyboard lookahead monitor, returns amount of chars available to read. Allows for nonblocking input
  */
 int kbhit()
 {
@@ -55,7 +53,7 @@ void nonblock(bool nb)
 	tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
 }
 
-char getch()
+char getch()		//Just for portability with windows
 {
 	char c = fgetc(stdin);
 	return c;

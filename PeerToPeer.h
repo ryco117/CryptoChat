@@ -53,13 +53,13 @@ public:
 	std::string ClntIP;
 	bool ConnectedClnt;
 	std::string CypherMsg;
-	char OrigText[512];
+	char OrigText[1024];
 	int currntLength;
 	int CurPos;
 	int Sending;
 
 	//Both
-	bool SentStuff;
+	unsigned int SentStuff;
 	bool GConnected;
 	bool ContinueLoop;
 	struct sockaddr_in socketInfo;

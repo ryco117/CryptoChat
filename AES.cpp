@@ -2,28 +2,27 @@
 
 string AES::Encrypt(mpz_class Key, string Msg)
 {
-	mat4 State = mat4((unsigned char)0);
-	mat4 CipherKey = mat4((unsigned char)0);
+	mat4 State = mat4((unsigned char)0);		//4x4 Matrix to go from original to cipher text
+	mat4 CipherKey = mat4((unsigned char)0);	//4x4 Matrix to hold key
 	string CipherText = "";
 	
 	mpz_class Temp;
 	mpz_class byteSplitter(255);
-	for(int i = 0; i < 16; i++)
+	for(int i = 0; i < 16; i++)			//An overly complex-looking loop that just splits the 128  bit key into 16 bytes. Puts each byte into 4x4 Matrix
 	{
-		//CipherKey.p[i / 4][i % 4] = (unsigned char)((Key >> ((15-i)*8)) & 255);
 		mpz_div_2exp(Temp.get_mpz_t(), Key.get_mpz_t(), (15-i)*8);
 		mpz_and(Temp.get_mpz_t(), Temp.get_mpz_t(), byteSplitter.get_mpz_t());
 		CipherKey.p[i / 4][i % 4] = (unsigned char)mpz_get_ui(Temp.get_mpz_t());
 	}
 		
-	mat4* Keys = new mat4[11];
+	mat4* Keys = new mat4[11];		//Will hold all the round keys and the initial
 	Keys[0] = CipherKey;
 	for(int i = 1; i < 11; i++)
 		Keys[i] = NextRound(Keys[i-1], i-1);
 	
-	for(unsigned int i = 0; (i * 16) < Msg.length(); i++)
+	for(unsigned int i = 0; (i * 16) < Msg.length(); i++)		//For every 16 chars, fill the state matrix again.
 	{
-		if(((i+1) * 16) > Msg.length() && (Msg.length() % 16) != 0)
+		if(((i+1) * 16) > Msg.length() && (Msg.length() % 16) != 0)		//What if there aren't n%16=0 chars? Fill the last matrix with extra zeros!
 		{
 			for(int j = 0; j < (Msg.length() % 16); j++)
 				State.p[j / 4][j % 4] = (unsigned char)Msg[(i * 16) + j];
@@ -62,6 +61,7 @@ string AES::Encrypt(mpz_class Key, string Msg)
 	return CipherText;
 }
 
+//The same as encrypt but in reverse...
 string AES::Decrypt(mpz_class Key, string Cipher)
 {
 	mat4 State = mat4((unsigned char)0);
@@ -72,7 +72,6 @@ string AES::Decrypt(mpz_class Key, string Cipher)
 	mpz_class byteSplitter(255);
 	for(int i = 0; i < 16; i++)
 	{
-		//CipherKey.p[i / 4][i % 4] = (unsigned char)((Key >> ((15-i)*8)) & 255);
 		mpz_div_2exp(Temp.get_mpz_t(), Key.get_mpz_t(), (15-i)*8);
 		mpz_and(Temp.get_mpz_t(), Temp.get_mpz_t(), byteSplitter.get_mpz_t());
 		CipherKey.p[i / 4][i % 4] = (unsigned char)mpz_get_ui(Temp.get_mpz_t());

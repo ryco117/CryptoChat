@@ -9,20 +9,39 @@ void GMPSeed(gmp_randclass& rng);
 
 int main(int argc, char* argv[])
 {
+	//This will be used for all randomness for the rest of the execution... seed well
 	gmp_randclass rng(gmp_randinit_default);
 	GMPSeed(rng);
-
+	
 	PeerToPeer MyPTP;
 	RSA NewRSA;
 	AES Cipher;
-	mpz_class SymmetricKey = rng.get_z_bits(128);
+	mpz_class SymmetricKey = rng.get_z_bits(128);		//Create a 128 bit long random value as our key
+	bool PrintVals = false;
+	bool ForceRand = false;
 	
-	cout <<"Symmetric Key: " << SymmetricKey << "\n\n";
+	for(unsigned int i = 1; i < argc; i++)
+	{
+		string Arg = string(argv[i]);
+		if(Arg == "-p" || Arg == "--print")
+			PrintVals = true;
+		else if(Arg == "-r" || Arg == "--random")
+			ForceRand = true;
+		else if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
+		{
+			MyPTP.ClntIP = argv[i+1];
+			i++;
+		}
+		else
+			cout << "warning: didn't understand " << Arg << endl;
+	}
+	if(PrintVals)
+		cout <<"Symmetric Key: " << SymmetricKey << "\n\n";
 
 	mpz_class Keys[2];
 	mpz_class Mod = 0;
 	GMPSeed(rng);
-	NewRSA.KeyGenerator(Keys, Mod, rng);
+	NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
 
 	cout << "All necessary Encryption values are filled\n\n";
 	MyPTP.MyMod = Mod;
@@ -52,7 +71,7 @@ void GMPSeed(gmp_randclass& rng)
 	//Properly Seed rand()
 	FILE* random;
 	unsigned int seed;
-	random = fopen ("/dev/urandom", "r");
+	random = fopen ("/dev/urandom", "r");		//Unix provides it, why not use it
 	if(random == NULL)
 	{
 		fprintf(stderr, "Cannot open /dev/urandom!\n"); 
