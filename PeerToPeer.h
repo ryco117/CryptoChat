@@ -4,7 +4,6 @@
 #include <iostream>
 #include <string>
 #include <cstring>
-//#include <pthread.h>
 
 #include <arpa/inet.h>		//inet_addr
 
@@ -83,4 +82,46 @@ public:
 	//PThread
 	//pthread_t pthand;	//Handle to the thread
 };
+
+bool IsIP(string IP)		//127.0.0.1
+{
+	if(IP.length() >= 7 && IP.length() <= 15)
+	{
+		char Periods = 0;
+		char PerPos[5] = {0};	//PerPos[0] is 0, three periods, then PerPos[4] points one past the string
+		for(unsigned int i = 0; i < IP.length(); i++)
+		{
+			if(IP[i] == '.')
+			{
+				Periods++;
+				if(Periods <= 3 && i != 0 && i != IP.length()-1)
+					PerPos[Periods] = i;
+				else
+					return false;
+			}
+			else if(IP[i] < 48 || IP[i] > 57)
+				return false;
+		}
+		PerPos[4] = IP.length();
+		int iTemp = 0;
+		for(int i = 0; i < 4; i++)
+		{
+			if((PerPos[i+1]-1) - PerPos[i] > 0)		//Check for two side by side periods
+			{
+				//									192.168.1.68
+				//									0123456789
+				//									0  1   2 3  4
+				iTemp = atoi(IP.substr(PerPos[i], PerPos[i+1] - PerPos[i]).c_str());
+				if(iTemp > 255)
+					return false;
+			}
+			else
+				return false;
+		}
+	}
+	else
+		return false;
+	
+	return true;
+}
 #endif

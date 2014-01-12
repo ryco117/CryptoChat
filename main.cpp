@@ -30,6 +30,9 @@ int main(int argc, char* argv[])
 		else if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
 		{
 			MyPTP.ClntIP = argv[i+1];
+			if(!IsIP(MyPTP.ClntIP))
+				cout << MyPTP.ClntIP << " is not a properly formated IPv4 address and will not be used\n";
+			MyPTP.ClntIP = "";
 			i++;
 		}
 		else

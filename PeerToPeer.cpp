@@ -27,8 +27,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 	//		**-CLIENT-**
 	if(ClntIP.empty())
 	{
-		cout  << "Client's IP: ";
-		getline(cin, ClntIP);
+		while(!IsIP(ClntIP))
+		{
+			if(!ClntIP.empty())
+				cout << "That is not a properly formated IPv4 address and will not be used\n";
+			cout  << "Client's IP: ";
+			getline(cin, ClntIP);
+		}
 	}
 	
 	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
