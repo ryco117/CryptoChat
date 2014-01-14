@@ -48,7 +48,7 @@ bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	}
 	else
 	{
-		cout << "Error: Couldn't open " << File << endl;
+		cout << "Error: Couldn't open " << FileLoc << endl;
 		return false;
 	}
 	return true;
@@ -95,7 +95,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 	}
 	else
 	{
-		cout << "Error: Couldn't open " << File << endl;
+		cout << "Error: Couldn't open " << FileLoc << endl;
 		return false;
 	}
 	return true;
@@ -112,7 +112,7 @@ void MakePublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 		File.close();
 	}
 	else
-		cout << "Error: Couldn't open " << File << endl;
+		cout << "Error: Couldn't open " << FileLoc << endl;
 	return;
 }
 
@@ -131,7 +131,7 @@ void MakePrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		File.close();
 	}
 	else
-		cout << "Error: Couldn't open " << File << endl;
+		cout << "Error: Couldn't open " << FileLoc << endl;
 	return;
 }
 #endif
