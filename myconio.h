@@ -24,9 +24,9 @@ int kbhit()
 }
 
 /*
- *  nonblock(bool)  --  Change canonical mode state
+ *  nonblock(bool, bool)  --  Change canonical mode and echo state
  */
-void nonblock(bool nb)
+void nonblock(bool nb, bool echo)
 {
 	struct termios ttystate;
 
@@ -37,8 +37,6 @@ void nonblock(bool nb)
 	{
 		//turn off canonical mode
 		ttystate.c_lflag &= ~ICANON;
-		//turn echo off
-		ttystate.c_lflag &= ~ECHO;
 		//minimum of number input read.
 		ttystate.c_cc[VMIN] = 1;
 	}
@@ -46,6 +44,15 @@ void nonblock(bool nb)
 	{
 		//turn on canonical mode
 		ttystate.c_lflag |= ICANON;
+	}
+
+	if(!echo)
+	{
+		//turn echo off
+		ttystate.c_lflag &= ~ECHO;
+	}
+	else if(echo)
+	{
 		//turn echo on
 		ttystate.c_lflag |= ECHO;
 	}

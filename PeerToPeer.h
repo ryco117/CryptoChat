@@ -21,7 +21,7 @@ class PeerToPeer
 public:
 	/*Functions*/
 	//Server Functions
-	int StartServer(const int MAX_CLIENTS = 1);
+	int StartServer(const int MAX_CLIENTS = 1, bool SendPublic = true, string SavePublic = "");
 	//void ReceiveFile(std::string Msg);
 
 	//Client Functions
@@ -29,12 +29,8 @@ public:
 	void ParseInput(void);
 	//void SendFilePt1(void);
 	//void SendFilePt2(void);
-	void TryConnect(void);
+	void TryConnect(bool SendPublic = true);
 	void DropLine(std::string pBuffer);
-	static void* ConnectThread(void *ptr)
-	{
-		reinterpret_cast<PeerToPeer*>(ptr)->TryConnect();
-	}
 
 	
 	/*Vars*/
@@ -58,7 +54,8 @@ public:
 	int Sending;
 
 	//Both
-	unsigned int SentStuff;
+	unsigned int Port;
+	unsigned int SentStuff;		//an int to check which stage of the connection we are on
 	bool GConnected;
 	bool ContinueLoop;
 	struct sockaddr_in socketInfo;
@@ -108,9 +105,6 @@ bool IsIP(string IP)		//127.0.0.1
 		{
 			if((PerPos[i+1]-1) - PerPos[i] > 0)		//Check for two side by side periods
 			{
-				//									192.168.1.68
-				//									0123456789
-				//									0  1   2 3  4
 				iTemp = atoi(IP.substr(PerPos[i], PerPos[i+1] - PerPos[i]).c_str());
 				if(iTemp > 255)
 					return false;

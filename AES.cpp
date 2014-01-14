@@ -1,3 +1,5 @@
+#ifndef AES_CPP
+#define AES_CPP
 #include "AES.h"
 
 string AES::Encrypt(mpz_class Key, string Msg)
@@ -117,3 +119,4 @@ string AES::Decrypt(mpz_class Key, string Cipher)
 	delete[] Keys;
 	return PlainText;
 }
+#endif

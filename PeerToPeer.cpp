@@ -1,6 +1,7 @@
 #include "PeerToPeer.h"
+#include "KeyManager.h"
 
-int PeerToPeer::StartServer(const int MAX_CLIENTS)
+int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SavePublic)
 {
 	//		**-SERVER-**
 	if((Serv = socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0)
@@ -12,7 +13,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 	memset(&socketInfo, 0, sizeof(socketInfo));		//Used for setting up server info
 	socketInfo.sin_family = AF_INET;
 	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);
-	socketInfo.sin_port = htons(5001);
+	socketInfo.sin_port = htons(Port);
 	
 	int optval = 1;
 	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);		//Remove Bind already used error
@@ -40,7 +41,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 	memset(&socketInfo, 0, sizeof(socketInfo));			//Now will set up client stuff
 	socketInfo.sin_family = AF_INET;
 	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());
-	socketInfo.sin_port = htons(5001);
+	socketInfo.sin_port = htons(Port);
 	
 	//		**-FILE DESCRIPTORS-**
 	FD_ZERO(&master);
@@ -61,7 +62,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 	ConnectedSrvr = false;
 	ContinueLoop = true;
 	
-	nonblock(true);
+	nonblock(true, false);
 	while(ContinueLoop)
 	{
 		if(!GConnected && ConnectedClnt && ConnectedSrvr && SentStuff == 3)	//All values have been sent, then set, but we haven't begun! Start already!
@@ -115,18 +116,24 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 						}
 					}
 					
-					char TempValArray[1060] = {'\0'};
-					string TempValString;
-					while(TempValString.empty())
+					if(ClientMod == 0)
 					{
-						recv(newSocket, TempValArray, 1060, 0);
-						TempValString = TempValArray;
-					}
+						char TempValArray[1060] = {'\0'};
+						string TempValString;
+						while(TempValString.empty())
+						{
+							recv(newSocket, TempValArray, 1060, 0);
+							TempValString = TempValArray;
+						}
 
-					ClientMod = mpz_class(TempValString.substr(0, 705), 58);	//They sent in base 58, we must read in it
-					//cout << "CM: " << ClientMod << "\n\n";
-					ClientE = mpz_class(TempValString.substr(705, 355), 58);
-					//cout << "CE: " << ClientE << "\n\n";
+						ClientMod = mpz_class(TempValString.substr(0, 705), 58);	//They sent in base 58, we must read in it
+						//cout << "CM: " << ClientMod << "\n\n";
+						ClientE = mpz_class(TempValString.substr(705, 355), 58);
+						//cout << "CE: " << ClientE << "\n\n";
+						
+						if(!SavePublic.empty())
+							MakePublicKey(SavePublic, ClientMod, ClientE);
+					}
 				}
 				else		//Data is on a new socket
 				{
@@ -189,7 +196,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS)
 		
 		if(!ConnectedClnt)		//Not conected yet?!?
 		{
-			TryConnect();		//Lets try to change that
+			TryConnect(SendPublic);		//Lets try to change that
 		}
 		if(SentStuff == 1 && ClientMod != 0 && ClientE != 0)		//We have established a connection and we have their keys!
 		{
@@ -331,30 +338,33 @@ void PeerToPeer::DropLine(string pBuffer)
 	return;
 }
 
-void PeerToPeer::TryConnect()
+void PeerToPeer::TryConnect(bool SendPublic)
 {
 	if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) >= 0) //connected
 	{
 		fprintf(stderr, "Connected!\n");
-		string TempValues = "";
-		string MyValues = "";
-
-		TempValues = MyMod.get_str(58);		//Base 58 will save digits
-		while(TempValues.length() < 705)
-			TempValues = "0" + TempValues;
-
-		MyValues = TempValues;
-
-		TempValues = MyE.get_str(58);
-		while(TempValues.length() < 355)
-			TempValues = "0" + TempValues;
-		MyValues += TempValues;
-
-		//Send My Public Key And My Modulus Because We Started The Connection
-		if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+		if(SendPublic)
 		{
-			perror("Connect failure");
-			return;
+			string TempValues = "";
+			string MyValues = "";
+
+			TempValues = MyMod.get_str(58);		//Base 58 will save digits
+			while(TempValues.length() < 705)
+				TempValues = "0" + TempValues;
+
+			MyValues = TempValues;
+
+			TempValues = MyE.get_str(58);
+			while(TempValues.length() < 355)
+				TempValues = "0" + TempValues;
+			MyValues += TempValues;
+
+			//Send My Public Key And My Modulus Because We Started The Connection
+			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			{
+				perror("Connect failure");
+				return;
+			}
 		}
 		SentStuff = 1;			//We have sent our keys
 			
