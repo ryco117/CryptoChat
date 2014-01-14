@@ -225,17 +225,20 @@ string GetPassword()
 				nonblock(false, true);
 				return Passwd;
 			}
-			else if((int)c == '\b' && Passwd.length())	//Backspace
+			else if(c == 127)	//Backspace
 			{
-				cout << "\b";
-				Passwd[Passwd.length()-1] = '\0';
+				if(Passwd.length() > 0)
+				{
+					cout << "\b \b";
+					Passwd.erase(Passwd.length()-1, 1);
+				}
 			}
 			else if((int)c >= 32 && (int)c <= 126)
 			{
 				Passwd += c;
 				cout << "*";
 			}
-			else if(c == 27)		//Discard arrow keys
+			else
 			{
 				getch();
 				getch();
