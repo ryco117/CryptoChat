@@ -7,7 +7,7 @@
 #include "PeerToPeer.cpp"
 #include "myconio.h"
 #include "KeyManager.h"
-#include "sha256.c"
+#include "md5.h"
 
 using namespace std;
 
@@ -53,14 +53,14 @@ int main(int argc, char* argv[])
 	RSA NewRSA;
 	AES Cipher;
 	mpz_class SymmetricKey = rng.get_z_bits(128);		//Create a 128 bit long random value as our key
-	mpz_class Keys[2];
+	mpz_class Keys[2] = {0};
 	mpz_class Mod = 0;
 	
 	bool PrintVals = false;
 	bool ForceRand = false;
 	bool SendPublic = true;
-	string SavePublic;
-	string OutputFiles;
+	string SavePublic = "";
+	string OutputFiles = "";
 	
 	for(unsigned int i = 1; i < argc; i++)
 	{
@@ -91,8 +91,7 @@ int main(int argc, char* argv[])
 			cout << "Private Key Password: ";
 			fflush(stdout);
 			string Passwd = GetPassword();
-			Passwd = sha256(Passwd);
-			Passwd = Passwd.substr(0, 32);		//16 bytes in hexadecimal
+			Passwd = stringMD5(Passwd);
 			if(!LoadPublicKey(PubKeyName, Mod, Keys[0]))
 			{
 				Mod = 0;
@@ -166,9 +165,7 @@ int main(int argc, char* argv[])
 		}
 		else
 		{
-			Passwd1 = sha256(Passwd1);
-			Passwd1 = Passwd1.substr(0, 32);		//16 bytes in hexadecimal
-
+			Passwd1 = stringMD5(Passwd1);
 			MakePublicKey(PubKeyName, Mod, Keys[0]);
 			MakePrivateKey(PrivKeyName, Keys[1], Passwd1);
 		}
@@ -230,7 +227,12 @@ string GetPassword()
 				if(Passwd.length() > 0)
 				{
 					cout << "\b \b";
-					Passwd.erase(Passwd.length()-1, 1);
+					Passwd = Passwd.substr(0, Passwd.length()-1);
+				}
+				else if(Passwd.length() == 1)
+				{
+					cout << "\b \b";
+					Passwd.clear();
 				}
 			}
 			else if((int)c >= 32 && (int)c <= 126)

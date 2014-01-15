@@ -6,7 +6,6 @@
 #include <gmpxx.h>
 #include <exception>
 
-#include "sha256.c"
 #include "AES.cpp"
 
 bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
