@@ -312,6 +312,11 @@ void PeerToPeer::ParseInput()
 			SendMessage();
 		}
 	}
+	else
+	{
+		getch();
+		getch();
+	}
 	return;
 }
 

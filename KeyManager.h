@@ -67,13 +67,15 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		File.read(Cipher, FileLength);
 		AES crypt;
 		string Original;
-
+		
 		string SCipher = "";
 		for(int i = 0; i < FileLength; i++)
 			SCipher.push_back(Cipher[i]);
 		
 		if(!Passwd.empty())
 			Original = crypt.Decrypt(mpz_class(Passwd, 16), SCipher);
+		else
+			Original = SCipher;
 		
 		int pos = Original.find('\n');
 		if(Original.substr(0, pos) != "crypto-key")		//Check for proper format
@@ -126,6 +128,8 @@ void MakePrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		string Cipher;
 		if(!Passwd.empty())
 			Cipher = crypt.Encrypt(mpz_class(Passwd, 16), Original);
+		else
+			Cipher = Original;
 		File.write(Cipher.c_str(), Cipher.length());
 		File.close();
 	}

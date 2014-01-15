@@ -41,8 +41,8 @@ Input Argument Examples:\n\
 int main(int argc, char* argv[])
 {
 	//This will be used for all randomness for the rest of the execution... seed well
-	gmp_randclass rng(gmp_randinit_default);
-	GMPSeed(rng);
+	gmp_randclass rng(gmp_randinit_default);		//Define a gmp_randclass, initialize with default value
+	GMPSeed(rng);								//Pass randclass to function to seed it for more random values
 	
 	PeerToPeer MyPTP;
 	MyPTP.Port = 5001;
@@ -62,7 +62,7 @@ int main(int argc, char* argv[])
 	string SavePublic = "";
 	string OutputFiles = "";
 	
-	for(unsigned int i = 1; i < argc; i++)
+	for(unsigned int i = 1; i < argc; i++)		//What arguments were we provided with? How should we handle them
 	{
 		string Arg = string(argv[i]);
 		if(Arg == "-p" || Arg == "--print")
@@ -91,16 +91,22 @@ int main(int argc, char* argv[])
 			cout << "Private Key Password: ";
 			fflush(stdout);
 			string Passwd = GetPassword();
-			Passwd = stringMD5(Passwd);
+			if(!Passwd.empty())
+				Passwd = stringMD5(Passwd);
 			if(!LoadPublicKey(PubKeyName, Mod, Keys[0]))
 			{
 				Mod = 0;
 				Keys[0] = 0;
+				return 0;
 			}
 			else		//No point trying to set the private key if the public failed
+			{
 				if(!LoadPrivateKey(PrivKeyName, Keys[1], Passwd))
+				{
 					Keys[1] = 0;
-			
+					return 0;
+				}
+			}
 			i++;
 		}
 		else if((Arg == "-lp" || Arg == "--load-public") && i+1 < argc)	//load the public key that the peer can decrypt
@@ -120,6 +126,7 @@ int main(int argc, char* argv[])
 				cout << "Bad port number. Using default 5001\n";
 				MyPTP.Port = 5001;
 			}
+			i++;
 		}
 		else if(Arg == "-dp" || Arg == "--disable-public")				//WARNIG only if peer already has public and uses -lp
 			SendPublic = false;
@@ -133,7 +140,7 @@ int main(int argc, char* argv[])
 			cout << HelpString;
 			return 0;
 		}
-		else
+		else			//What the hell were they trying to do?
 			cout << "warning: didn't understand " << Arg << endl;
 	}
 	#ifndef ANDROID
@@ -143,7 +150,7 @@ int main(int argc, char* argv[])
 	if(PrintVals)
 		cout <<"Symmetric Key: " << SymmetricKey << "\n\n";
 	
-	GMPSeed(rng);
+	GMPSeed(rng);		//Reseed for more secure random goodness
 	if(Mod == 0)		//If one is set, they all must be set
 		NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
 		
@@ -152,22 +159,34 @@ int main(int argc, char* argv[])
 		string PubKeyName = OutputFiles + ".pub";
 		string PrivKeyName = OutputFiles + ".priv";
 
-		cout << "Private Key Password To Use: ";
-		fflush(stdout);
-		string Passwd1 = GetPassword();
-		cout << "Retype Password: ";
-		fflush(stdout);
-		string Passwd2 = GetPassword();
-
-		if(Passwd1 != Passwd2)
+		while(true)
 		{
-			cout << "Passwords do not match. Giving up on key creation\n";
-		}
-		else
-		{
-			Passwd1 = stringMD5(Passwd1);
-			MakePublicKey(PubKeyName, Mod, Keys[0]);
-			MakePrivateKey(PrivKeyName, Keys[1], Passwd1);
+			cout << "Private Key Password To Use: ";
+			fflush(stdout);
+			string Passwd1 = GetPassword();
+			cout << "Retype Password: ";
+			fflush(stdout);
+			string Passwd2 = GetPassword();
+			if(Passwd1 != Passwd2)		//Mistype
+			{
+				cout << "Passwords do not match. Do you want to try again<Y/n>: ";
+				fflush(stdout);
+				string Answer;
+				getline(cin, Answer);
+				if(Answer == "n" || Answer == "N")
+				{
+					cout << "Giving up on key creation\n\n";
+					break;
+				}
+			}
+			else
+			{
+				if(!Passwd1.empty())
+					Passwd1 = stringMD5(Passwd1);
+				MakePublicKey(PubKeyName, Mod, Keys[0]);
+				MakePrivateKey(PrivKeyName, Keys[1], Passwd1);
+				break;
+			}
 		}
 	}
 
@@ -177,7 +196,7 @@ int main(int argc, char* argv[])
 	MyPTP.MyD = Keys[1];
 	MyPTP.SymKey = SymmetricKey;
 
-	if(MyPTP.StartServer(1, SendPublic, SavePublic) != 0)
+	if(MyPTP.StartServer(1, SendPublic, SavePublic) != 0)			//Jump to the loop to handle all incoming connections and data sending
 	{
 		nonblock(false, true);
 		cout << "Finished cleaning, Press Enter To Exit...";
