@@ -247,12 +247,15 @@ void PeerToPeer::ParseInput()
 	if((int)c == '\n')	//return
 	{
 		TempValues = OrigText;
-		if(TempValues == "*exit*")
-			ContinueLoop = false;
-		else
+		if(!TempValues.empty())
 		{
-			CypherMsg = MyAES.Encrypt(SymKey, TempValues);
-			SendMessage();
+			if(TempValues == "*exit*")
+				ContinueLoop = false;
+			else
+			{
+				CypherMsg = MyAES.Encrypt(SymKey, TempValues);
+				SendMessage();
+			}
 		}
 	}
 	else if((int)c == 127)	//Backspace
@@ -329,11 +332,14 @@ void PeerToPeer::DropLine(string pBuffer)
 
 	int i = pBuffer.length() - 1;		//Before decrypting, check how many null terminators are part of the cipher text, vs were trailing in the buffer
 	for(; i >= 0; i--)
+	{
 		if(pBuffer[i] != '\0')
 			break;
+	}
 	
-	if((i+1) % 16 == 0)
-		pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing ones
+	while((i+1) % 16 != 0)
+		i++;
+	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing ones
 	
 	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer);		//Print What we received
 	cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
