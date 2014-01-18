@@ -4,31 +4,31 @@
 int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SavePublic)
 {
 	//		**-SERVER-**
-	if((Serv = socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0)
+	if((Serv = socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0)		//assign Serv to a file descriptor (socket) that uses IP addresses, TCP
 	{
 		close(Serv);
 		return -1;
 	}
 	
-	memset(&socketInfo, 0, sizeof(socketInfo));		//Used for setting up server info
-	socketInfo.sin_family = AF_INET;
-	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);
-	socketInfo.sin_port = htons(Port);
+	memset(&socketInfo, 0, sizeof(socketInfo));			//Clear data inside socketInfo to be filled with server stuff
+	socketInfo.sin_family = AF_INET;					//Use IP addresses
+	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);		//Allow connection from anybody
+	socketInfo.sin_port = htons(Port);					//Use port Port
 	
 	int optval = 1;
 	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);		//Remove Bind already used error
-	if(bind(Serv, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) < 0)
+	if(bind(Serv, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) < 0)	//Bind socketInfo to Serv
 	{
 		close(Serv);
 		perror("Bind");
 		return -2;
 	}
-	listen(Serv, MAX_CLIENTS);
+	listen(Serv, MAX_CLIENTS);			//Listen for connections on Serv
 	
 	//		**-CLIENT-**
-	if(ClntIP.empty())
+	if(ClntIP.empty())					//If we didn't set the client ip as an argument
 	{
-		while(!IsIP(ClntIP))
+		while(!IsIP(ClntIP))			//Keep going until we enter a real ip
 		{
 			if(!ClntIP.empty())
 				cout << "That is not a properly formated IPv4 address and will not be used\n";
@@ -37,27 +37,27 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 	}
 	
-	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-	memset(&socketInfo, 0, sizeof(socketInfo));			//Now will set up client stuff
-	socketInfo.sin_family = AF_INET;
-	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());
-	socketInfo.sin_port = htons(Port);
+	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);			//assign Client to a file descriptor (socket) that uses IP addresses, TCP
+	memset(&socketInfo, 0, sizeof(socketInfo));					//Clear socketInfo to be filled with client stuff
+	socketInfo.sin_family = AF_INET;							//uses IP addresses
+	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
+	socketInfo.sin_port = htons(Port);							//uses port Port
 	
 	//		**-FILE DESCRIPTORS-**
-	FD_ZERO(&master);
-	FD_SET(Serv, &master);
-	read_fds = master;
+	FD_ZERO(&master);											//clear data in master
+	FD_SET(Serv, &master);										//set master to check file descriptor Serv
+	read_fds = master;											//the read_fds will check the same FDs as master
 	
-	MySocks = new int[MAX_CLIENTS + 1];
-	MySocks[0] = Serv;
-	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)
+	MySocks = new int[MAX_CLIENTS + 1];							//MySocks is a new array of sockets (ints) as long the max connections + 1
+	MySocks[0] = Serv;											//first socket is the server FD
+	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)			//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
 		MySocks[i] = -1;
-	timeval zero = {0, 50};
-	fdmax = Serv;
+	timeval zero = {0, 50};										//called zero for legacy reasons... assign timeval 50 milliseconds
+	fdmax = Serv;												//fdmax is the highest file descriptor to check (because they are just ints)
 	
 	//Progress checks
 	SentStuff = 0;
-	GConnected = false;
+	GConnected = false;											//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
 	ConnectedClnt = false;
 	ConnectedSrvr = false;
 	ContinueLoop = true;
@@ -77,8 +77,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			cout << "Message: ";
 		}
 		
-		read_fds = master;
-		if(select(fdmax+1, &read_fds, NULL, NULL, &zero) == -1)		//Check for stuff to read on sockets
+		read_fds = master;			//assign read_fds back to the unchanged master
+		if(select(fdmax+1, &read_fds, NULL, NULL, &zero) == -1)		//Check for stuff to read on sockets, up to fdmax+1.. stop check after timeval zero (50ms)
 		{
 			cout << "\r";
 			for(int j = 0; j < currntLength + 9; j++)
@@ -90,49 +90,49 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		for(unsigned int i = 0; i < MAX_CLIENTS + 1; i++)		//Look through all sockets
 		{
-			if(MySocks[i] == -1)
+			if(MySocks[i] == -1)		//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
 				continue;
-			if(FD_ISSET(MySocks[i], &read_fds))
+			if(FD_ISSET(MySocks[i], &read_fds))		//check read_fds to see if there is unread data in MySocks[i]
 			{
-				if(i == 0)		//Connection on Serv available
+				if(i == 0)		//if i = 0, then based on line 52, we know that we are looking at data on the Serv socket... This means new connection!!
 				{
-					if((newSocket = accept(Serv, NULL, NULL)) < 0)
+					if((newSocket = accept(Serv, NULL, NULL)) < 0)		//assign socket newSocket to the person we are accepting on Serv
 					{
-						close(Serv);
+						close(Serv);				//unless it errors
 						perror("Accept");
 						return -4;
 					}
-					ConnectedSrvr = true;		//Passed All Tests, We Can Say We Connected
+					ConnectedSrvr = true;		//Passed All Tests, We Can Safely Say We Connected
 					
-					FD_SET(newSocket, &master); // add to master set
-					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)
+					FD_SET(newSocket, &master); // add the newSocket FD to master set
+					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)	//assign an unassigned MySocks to newSocket
 					{
 						if(MySocks[j] == -1) 	//Not in use
 						{
 							MySocks[j] = newSocket;
-							if(newSocket > fdmax)
-								fdmax = newSocket;
+							if(newSocket > fdmax)		//if the new file descriptor is greater than fdmax..
+								fdmax = newSocket;		//change fdmax to newSocket
 							break;
 						}
 					}
 					
-					if(ClientMod == 0)
+					if(ClientMod == 0)		//Check if we haven't already assigned the client's public key through an arg.
 					{
 						char TempValArray[1060] = {'\0'};
 						string TempValString;
-						while(TempValString.empty())
+						while(TempValString.empty())		//while the string we are filling with received data is empty...
 						{
 							recv(newSocket, TempValArray, 1060, 0);
 							TempValString = TempValArray;
 						}
 
-						ClientMod = mpz_class(TempValString.substr(0, 705), 58);	//They sent in base 58, we must read in it
+						ClientMod = mpz_class(TempValString.substr(0, 705), 58);	//They sent in base 58, we must read in it. Chars 0 - 704 are for the modulus
 						//cout << "CM: " << ClientMod << "\n\n";
-						ClientE = mpz_class(TempValString.substr(705, 355), 58);
+						ClientE = mpz_class(TempValString.substr(705, 355), 58);	//Chars 705 - 1059 (355 chars to read) are for the much smaller encryption value
 						//cout << "CE: " << ClientE << "\n\n";
 						
-						if(!SavePublic.empty())
-							MakePublicKey(SavePublic, ClientMod, ClientE);
+						if(!SavePublic.empty())		//If we set the string for where to save their public key...
+							MakePublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
 					}
 				}
 				else		//Data is on a new socket
@@ -164,24 +164,24 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						FD_CLR(MySocks[i], &master); // remove from master set
 						ContinueLoop = false;
 					}
-					else if(SentStuff == 2)
+					else if(SentStuff == 2)		//if SentStuff == 2, then we still need the symmetric key
 					{
 						string ClntKey = buf;
 						SymKey += MyRSA.BigDecrypt(MyMod, MyD, mpz_class(ClntKey, 58));		//They sent their sym key with our public key. Decrypt it!
 						
 						mpz_class LargestAllowed = 0;
 						mpz_class One = 1;
-						mpz_mul_2exp(LargestAllowed.get_mpz_t(), One.get_mpz_t(), 128);
-						SymKey %= LargestAllowed;		//Modulus by largest 128 bit value ensures within range after adding!
+						mpz_mul_2exp(LargestAllowed.get_mpz_t(), One.get_mpz_t(), 128);		//Largest allowed sym key is equal to (1 * 2^128)
+						SymKey %= LargestAllowed;		//Modulus by largest 128 bit value ensures within range after adding keys!
 						SentStuff = 3;
 					}
 					else
 					{
 						string Msg = "";
-						for(unsigned int i = 0; i < 512; i++)
-							Msg.push_back(buf[i]);
-						
-						DropLine(Msg);
+						for(unsigned int i = 0; i < 512; i++)		//If we do a simple assign, the string will stop reading at a null terminator ('\0')
+							Msg.push_back(buf[i]);					//so manually push back all values in array buf
+																	//    ^
+						DropLine(Msg);								//	  |   causes a problem which i will explain in this function...
 					}
 				}
 			}//End FD_ISSET
@@ -223,11 +223,11 @@ void PeerToPeer::SendMessage()
 		cout << " ";
 	cout << "\r";
 	
-	cout << "Me: " << OrigText << endl;
-	send(Client, CypherMsg.c_str(), CypherMsg.length(), 0);
+	cout << "Me: " << OrigText << endl;		//print "me: " then the message
+	send(Client, CypherMsg.c_str(), CypherMsg.length(), 0);	//send the client the encrypted message
 
-	for(int i = 0; i < 1024; i++)
-		OrigText[i] = '\0';		
+	for(int i = 0; i < 1024; i++)	//clear the original text buffer
+		OrigText[i] = '\0';
 	CypherMsg = "";
 	fprintf(stderr, "Message: ");
 	CurPos = 0;
@@ -236,15 +236,13 @@ void PeerToPeer::SendMessage()
 	return;
 }
 
+//Lots of char parsing crap...
 void PeerToPeer::ParseInput()
 {
 	unsigned char c = getch();
-	string TempMsg = "";
-
-	string MyValues = "";
 	string TempValues = "";
 
-	if((int)c == '\n')	//return
+	if(c == '\n')	//return
 	{
 		TempValues = OrigText;
 		if(!TempValues.empty())
@@ -258,7 +256,7 @@ void PeerToPeer::ParseInput()
 			}
 		}
 	}
-	else if((int)c == 127)	//Backspace
+	else if(c == 127 || c == '\b')	//Backspace
 	{
 		if(CurPos > 0)
 		{
@@ -288,7 +286,7 @@ void PeerToPeer::ParseInput()
 			CurPos--;
 		}
 	}
-	else if((int)c >= 32 && (int)c <= 126)
+	else if(c >= 32 && c <= 126)	//within range for a standard alpha-numeric-special char
 	{
 		cout << c;
 		if(CurPos < currntLength)
@@ -308,14 +306,14 @@ void PeerToPeer::ParseInput()
 		currntLength++;
 		CurPos++;
 
-		if(currntLength == 1024)
+		if(currntLength == 1024)	//reached max allowed chars per message
 		{
 			TempValues = OrigText;
 			CypherMsg = MyAES.Encrypt(SymKey, TempValues);
 			SendMessage();
 		}
 	}
-	else
+	else	//Some special input... These input usually also send two more chars with it, which we don't want to interpret next loop (because they are alpha-numeric)
 	{
 		getch();
 		getch();
@@ -325,25 +323,25 @@ void PeerToPeer::ParseInput()
 
 void PeerToPeer::DropLine(string pBuffer)
 {
-	cout << "\r";	//Clear what was printed
+	cout << "\r";	//Clear what was already printed on this line
 	for(int j = 0; j < currntLength + 9; j++)
 		cout << " ";
 	cout << "\r";
 
-	int i = pBuffer.length() - 1;		//Before decrypting, check how many null terminators are part of the cipher text, vs were trailing in the buffer
-	for(; i >= 0; i--)
+	//We pushed back all values in the 1024 byte large array buf, but the message may have been shorter than that, so...
+	int i = pBuffer.length() - 1;	//before decrypting, check how many null terminators are part of the cipher text vs were added to the back from buf, but weren't recieved
+	for(; i >= 0; i--)	//This is done by iterating from the back of the buffer, looking for where the first non zero value is
 	{
 		if(pBuffer[i] != '\0')
 			break;
 	}
-	
-	while((i+1) % 16 != 0)
+	while((i+1) % 16 != 0)		//Then increasing the position until it is a multiple of 16 (because AES uses blocks of 16 bytes)
 		i++;
-	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing ones
+	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing zeros, from i to the end of the string
 	
 	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer);		//Print What we received
 	cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
-	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)
+	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
 		cout << "\b";
 
 	return;
@@ -351,7 +349,7 @@ void PeerToPeer::DropLine(string pBuffer)
 
 void PeerToPeer::TryConnect(bool SendPublic)
 {
-	if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) >= 0) //connected
+	if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) >= 0) 	//attempt to connect using socketInfo with client values
 	{
 		fprintf(stderr, "Connected!\n");
 		if(SendPublic)
@@ -360,15 +358,15 @@ void PeerToPeer::TryConnect(bool SendPublic)
 			string MyValues = "";
 
 			TempValues = MyMod.get_str(58);		//Base 58 will save digits
-			while(TempValues.length() < 705)
-				TempValues = "0" + TempValues;
+			while(TempValues.length() < 705)	//Make sure modulus is 705 chars long
+				TempValues = "0" + TempValues;	//do this by adding leading zeros (to not change value)
 
 			MyValues = TempValues;
 
 			TempValues = MyE.get_str(58);
-			while(TempValues.length() < 355)
-				TempValues = "0" + TempValues;
-			MyValues += TempValues;
+			while(TempValues.length() < 355)	//makes sure exp is 355 chars long
+				TempValues = "0" + TempValues;	//do this by adding leading zeros (to not change value)
+			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
 
 			//Send My Public Key And My Modulus Because We Started The Connection
 			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
