@@ -186,6 +186,12 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							PeerIV = mpz_class(Msg.substr(1, 22), 58);	//		|
 							Msg = Msg.substr(23, 512);					//		|
 							DropLine(Msg);								//		|   causes a problem which i will explain in this function.
+							if(Sending == 0)
+							{
+								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
+								for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
+									cout << "\b";
+							}
 						}
 					}
 				}
@@ -352,10 +358,6 @@ void PeerToPeer::DropLine(string pBuffer)
 	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing zeros, from i to the end of the string
 	
 	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer, PeerIV);		//Print What we received
-	cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
-	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
-		cout << "\b";
-
 	return;
 }
 
