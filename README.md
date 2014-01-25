@@ -32,4 +32,6 @@ Input Argument Examples:
 
 How To Build:
 x86
-g++ -static -O3 main.cpp -lgmpxx -lgmp -w
+g++ -static -O3 main.cpp -lgmpxx -lgmp -w -o bin/CryptoChat
+Android
+/usr/android-toolchain/bin/arm-linux-androideabi-g++ -static -O3 main.cpp -I/usr/android-toolchain/include -L/usr/android-toolchain/lib -lgmpxx -lgmp -o bin/AndroidChat -DANDROID			(This is really just for  me, so I have it kept somewhere)

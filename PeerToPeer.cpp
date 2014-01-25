@@ -177,11 +177,16 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					}
 					else
 					{
-						string Msg = "";
-						for(unsigned int i = 0; i < 512; i++)		//If we do a simple assign, the string will stop reading at a null terminator ('\0')
-							Msg.push_back(buf[i]);					//so manually push back all values in array buf
-																	//    ^
-						DropLine(Msg);								//	  |   causes a problem which i will explain in this function...
+						string Msg = "";	//1 char for type, varying extension info, actual main data
+											//0 = msg        , 22 chars for IV       , 512 message chars
+						for(unsigned int i = 0; i < 535; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
+							Msg.push_back(buf[i]);						//so manually push back all values in array buf...
+						if(Msg[0] == 0)									//		^
+						{												//		|
+							PeerIV = mpz_class(Msg.substr(1, 22), 58);	//		|
+							Msg = Msg.substr(23, 512);					//		|
+							DropLine(Msg);								//		|   causes a problem which i will explain in this function.
+						}
 					}
 				}
 			}//End FD_ISSET
@@ -241,6 +246,7 @@ void PeerToPeer::ParseInput()
 {
 	unsigned char c = getch();
 	string TempValues = "";
+	mpz_class IV;
 
 	if(c == '\n')	//return
 	{
@@ -251,7 +257,10 @@ void PeerToPeer::ParseInput()
 				ContinueLoop = false;
 			else
 			{
-				CypherMsg = MyAES.Encrypt(SymKey, TempValues);
+				IV = RNG->get_z_bits(128);
+				CypherMsg = "x" + IV.get_str(58);
+				CypherMsg[0] = 0;
+				CypherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 				SendMessage();
 			}
 		}
@@ -306,10 +315,13 @@ void PeerToPeer::ParseInput()
 		currntLength++;
 		CurPos++;
 
-		if(currntLength == 1024)	//reached max allowed chars per message
+		if(currntLength == 512)	//reached max allowed chars per message
 		{
 			TempValues = OrigText;
-			CypherMsg = MyAES.Encrypt(SymKey, TempValues);
+			IV = RNG->get_z_bits(128);
+			CypherMsg = "x" + IV.get_str(58);
+			CypherMsg[0] = 0;
+			CypherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 			SendMessage();
 		}
 	}
@@ -339,7 +351,7 @@ void PeerToPeer::DropLine(string pBuffer)
 		i++;
 	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing zeros, from i to the end of the string
 	
-	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer);		//Print What we received
+	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer, PeerIV);		//Print What we received
 	cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
 	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
 		cout << "\b";

@@ -204,6 +204,13 @@ public:
 				p[col][row] = num;
 	}
 	
+	mat4(int num)
+	{
+		for(int col = 0; col < 4; col++)
+			for(int row = 0; row < 4; row++)
+				p[col][row] = (unsigned char)num;
+	}
+	
 	mat4(unsigned char* m)
 	{
 		for(int col = 0; col < 4; col++)
@@ -371,10 +378,11 @@ mat4 NextRound(mat4 Key, int round)
 	return NewRound;
 }
 
+static mpz_class DEFAULTIV = mpz_class(0);
 class AES
 {
 public:
-	string Encrypt(mpz_class Key, string Msg);
-	string Decrypt(mpz_class Key, string Cypher);
+	string Encrypt(mpz_class Key, string Msg, mpz_class& GMPIV = DEFAULTIV);
+	string Decrypt(mpz_class Key, string Cypher, mpz_class& GMPIV = DEFAULTIV);
 };
 #endif

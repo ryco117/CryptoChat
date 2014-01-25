@@ -195,7 +195,8 @@ int main(int argc, char* argv[])
 	MyPTP.MyE = Keys[0];
 	MyPTP.MyD = Keys[1];
 	MyPTP.SymKey = SymmetricKey;
-
+	GMPSeed(rng);
+	MyPTP.RNG = &rng;
 	if(MyPTP.StartServer(1, SendPublic, SavePublic) != 0)			//Jump to the loop to handle all incoming connections and data sending
 	{
 		nonblock(false, true);

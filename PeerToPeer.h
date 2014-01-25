@@ -42,6 +42,7 @@ public:
 	bool ConnectedSrvr;
 	std::string FileLoc;
 	std::string AcceptFile;
+	mpz_class PeerIV;
 
 	//Client Vars
 	int Client;		//Socket for sending data
@@ -69,6 +70,7 @@ public:
 	mpz_class ClientMod;
 	mpz_class ClientE;
 	mpz_class SymKey;
+	gmp_randclass* RNG;
 
 	//FD SET
 	fd_set master;		// master file descriptor list
