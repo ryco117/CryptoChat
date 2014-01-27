@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <sstream>
 
 #include <arpa/inet.h>		//inet_addr
 
@@ -22,15 +23,15 @@ public:
 	/*Functions*/
 	//Server Functions
 	int StartServer(const int MAX_CLIENTS = 1, bool SendPublic = true, string SavePublic = "");
-	//void ReceiveFile(std::string Msg);
+	void ReceiveFile(std::string Msg);
 
 	//Client Functions
 	void SendMessage(void);
 	void ParseInput(void);
-	//void SendFilePt1(void);
-	//void SendFilePt2(void);
 	void TryConnect(bool SendPublic = true);
 	void DropLine(std::string pBuffer);
+	void SendFilePt1(void);
+	void SendFilePt2(void);
 
 	
 	/*Vars*/
@@ -40,19 +41,23 @@ public:
 	int addr_size;    //Address size
     int nbytes;       //Total bytes recieved
 	bool ConnectedSrvr;
-	std::string FileLoc;
-	std::string AcceptFile;
-	mpz_class PeerIV;
+	std::string FileLoc;		//string for saving file
+	unsigned int FileLength;	//length of the file
+	unsigned int BytesRead;		//bytes that we have received for the file
+	mpz_class PeerIV;			//the initialization vector for the current message
+	mpz_class FileIV;			//the IV for the current file part
 
 	//Client Vars
-	int Client;		//Socket for sending data
-	std::string ClntIP;
-	bool ConnectedClnt;
-	std::string CypherMsg;
-	char OrigText[1024];
-	int currntLength;
-	int CurPos;
-	int Sending;
+	int Client;				//Socket for sending data
+	std::string ClntIP;		//string holding IP to connect to
+	bool ConnectedClnt;		//have we connected to them yet?
+	std::string CipherMsg;	//string holding encrypted message to send
+	char OrigText[512];	//unencrypted message (or file loc) that we have typed
+	int currntLength;		//Length of the message we have typed in plain text
+	int CurPos;				//the cursors position (isn't very useful because arrow keys don't work)
+	int Sending;			//What stage are we in sending? 0 = none, positive = trying to send message, negative = receiving
+	std::string FileToSend;	//String showing the file we are sending
+	unsigned int FilePos;	//Position in the file we are sending
 
 	//Both
 	unsigned int Port;
@@ -77,9 +82,6 @@ public:
 	fd_set read_fds;	// temp file descriptor list for select()
 	int fdmax;			// highest socket descriptor number
 	int* MySocks;
-	
-	//PThread
-	//pthread_t pthand;	//Handle to the thread
 };
 
 bool IsIP(string IP)		//127.0.0.1

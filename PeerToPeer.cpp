@@ -1,5 +1,6 @@
 #include "PeerToPeer.h"
 #include "KeyManager.h"
+#include "PeerIO.cpp"
 
 int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SavePublic)
 {
@@ -122,7 +123,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						string TempValString;
 						while(TempValString.empty())		//while the string we are filling with received data is empty...
 						{
-							recv(newSocket, TempValArray, 1060, 0);
+							recvr(newSocket, TempValArray, 1060, 0);
 							TempValString = TempValArray;
 						}
 
@@ -137,11 +138,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 				}
 				else		//Data is on a new socket
 				{
-					char buf[1024] = {'\0'};
-					for(unsigned int j = 0; j < 1024; j++)
+					char buf[1047] = {'\0'};	//1047 is the max possible incoming data (file part with iv and leading byte)
+					for(unsigned int j = 0; j < 1047; j++)
 						buf[j] = '\0';
 					
-					if((nbytes = recv(MySocks[i], buf, 1024, 0)) <= 0)		//handle data from a client
+					if((nbytes = recvr(MySocks[i], buf, 1047, 0)) <= 0)		//handle data from a client
 					{
 						// got error or connection closed by client
 						if(nbytes == 0)
@@ -179,7 +180,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					{
 						string Msg = "";	//1 char for type, varying extension info, actual main data
 											//0 = msg        , 22 chars for IV       , 512 message chars
-						for(unsigned int i = 0; i < 535; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
+											//1 = file request, X chars for file length, Y chars for file loc.
+											//2 = request answer, 1 char for answer
+											//3 = file piece , 22 chars for IV		, 1024 bytes of file piece (or less)
+						
+						for(unsigned int i = 0; i < 1047; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
 							Msg.push_back(buf[i]);						//so manually push back all values in array buf...
 						if(Msg[0] == 0)									//		^
 						{												//		|
@@ -187,11 +192,70 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							Msg = Msg.substr(23, 512);					//		|
 							DropLine(Msg);								//		|   causes a problem which i will explain in this function.
 							if(Sending == 0)
-							{
 								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
-								for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
-									cout << "\b";
+							else if(Sending == 1)
+								cout << "\nFile Location: " << OrigText;
+							for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
+								cout << "\b";
+						}
+						else if(Msg[0] == 1)
+						{
+							Sending = -1;		//Receive file mode
+							FileLength = atoi(Msg.substr(1, Msg.find("X", 1)-1).c_str());
+							FileLoc = Msg.substr(Msg.find("X", 1)+1, Msg.size());
+							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes<y/N>";
+							char c = getch();
+							cout << c;
+							if(c == 'y' || c == 'Y')
+							{
+								c = 'y';
+								BytesRead = 0;
 							}
+							else
+							{
+								c = 'n';
+								Sending = 0;
+							}
+							string Accept = "xx";
+							Accept[0] = 2;
+							Accept[1] = c;
+							while(Accept.size() < 1047)
+								Accept.push_back('\0');
+							sendr(Client, Accept.c_str(), Accept.length(), 0);
+							cout << "\nMessage: " << OrigText;
+						}
+						else if(Msg[0] == 2)
+						{
+							if(Msg[1] == 'y')
+							{
+								Sending = 3;
+								FilePos = 0;
+							}
+							else
+							{
+								Sending = 0;
+								cout << "\r";
+								for(int i = 0; i < currntLength + 15; i++)
+									cout << " ";
+								cout << "\rPeer rejected file. The transfer was cancelled.";
+							}
+							cout << "\nMessage: ";
+							for(int i = 0; i < 512; i++)
+								OrigText[i] = '\0';
+							CurPos = 0;
+							currntLength = 0;
+						}
+						else if(Msg[0] == 3)
+						{
+							try
+							{
+								FileIV = mpz_class(Msg.substr(1, 22), 58);
+							}
+							catch(exception& e)
+							{
+								cout << "Bad IV value when receiving file\n";
+							}
+							ReceiveFile(Msg.substr(23, 1024));
 						}
 					}
 				}
@@ -199,12 +263,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}//End For Loop for sockets
 		if(kbhit())		//Check for keypress
 		{
-			if(GConnected)		//So nothing happens until we are ready...
+			if(GConnected && Sending != 2)		//So nothing happens until we are ready...
 				ParseInput();
 			else
 				getch();		//And keypresses before hand arent read when we are.
 		}
-		
+		if(Sending == 3)
+			SendFilePt2();
 		if(!ConnectedClnt)		//Not conected yet?!?
 		{
 			TryConnect(SendPublic);		//Lets try to change that
@@ -212,9 +277,10 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		if(SentStuff == 1 && ClientMod != 0 && ClientE != 0)		//We have established a connection and we have their keys!
 		{
 			string MyValues = (MyRSA.BigEncrypt(ClientMod, ClientE, SymKey)).get_str(58);	//Encrypt The Symmetric Key With Their Public Key, base 58
-			
+			while(MyValues.size() < 1047)
+				MyValues.push_back('\0');
 			//Send The Encrypted Symmetric Key
-			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
 			{
 				perror("Connect failure");
 				return -5;
@@ -225,140 +291,6 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	}//End While Loop
 	cout << "\n";
 	return 0;
-}
-
-void PeerToPeer::SendMessage()
-{
-	cout << "\r";		//Clear what was printed
-	for(int i = 0; i < currntLength + 9; i++)
-		cout << " ";
-	cout << "\r";
-	
-	cout << "Me: " << OrigText << endl;		//print "me: " then the message
-	send(Client, CypherMsg.c_str(), CypherMsg.length(), 0);	//send the client the encrypted message
-
-	for(int i = 0; i < 1024; i++)	//clear the original text buffer
-		OrigText[i] = '\0';
-	CypherMsg = "";
-	fprintf(stderr, "Message: ");
-	CurPos = 0;
-	currntLength = 0;
-
-	return;
-}
-
-//Lots of char parsing crap...
-void PeerToPeer::ParseInput()
-{
-	unsigned char c = getch();
-	string TempValues = "";
-	mpz_class IV;
-
-	if(c == '\n')	//return
-	{
-		TempValues = OrigText;
-		if(!TempValues.empty())
-		{
-			if(TempValues == "*exit*")
-				ContinueLoop = false;
-			else
-			{
-				IV = RNG->get_z_bits(128);
-				CypherMsg = "x" + IV.get_str(58);
-				CypherMsg[0] = 0;
-				CypherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
-				SendMessage();
-			}
-		}
-	}
-	else if(c == 127 || c == '\b')	//Backspace
-	{
-		if(CurPos > 0)
-		{
-			cout << "\b";
-
-			if(CurPos < currntLength)
-			{
-				for(int i = 0; i < currntLength - CurPos; i++)
-				{
-					cout << OrigText[CurPos + i];
-
-					OrigText[CurPos + i - 1] = OrigText[CurPos + i];
-				}
-				OrigText[currntLength - 1] = '\0';
-				cout << " ";
-
-				for(int undo = 0; undo <= currntLength - CurPos; undo++)
-					cout << "\b";
-			}
-			else
-			{
-				cout << " \b";
-				OrigText[CurPos - 1] = '\0';
-			}
-
-			currntLength--;
-			CurPos--;
-		}
-	}
-	else if(c >= 32 && c <= 126)	//within range for a standard alpha-numeric-special char
-	{
-		cout << c;
-		if(CurPos < currntLength)
-		{
-			for(int i = 0; i < currntLength - CurPos; i++)
-				OrigText[currntLength - i] = OrigText[currntLength - i - 1];
-
-			for(int i = 1; i <= currntLength - CurPos; i++)
-				cout << OrigText[CurPos + i];
-
-			for(int undo = 0; undo < currntLength - CurPos; undo++)
-				cout << "\b";
-		}
-
-		OrigText[CurPos] = c;
-		
-		currntLength++;
-		CurPos++;
-
-		if(currntLength == 512)	//reached max allowed chars per message
-		{
-			TempValues = OrigText;
-			IV = RNG->get_z_bits(128);
-			CypherMsg = "x" + IV.get_str(58);
-			CypherMsg[0] = 0;
-			CypherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
-			SendMessage();
-		}
-	}
-	else	//Some special input... These input usually also send two more chars with it, which we don't want to interpret next loop (because they are alpha-numeric)
-	{
-		getch();
-		getch();
-	}
-	return;
-}
-
-void PeerToPeer::DropLine(string pBuffer)
-{
-	cout << "\r";	//Clear what was already printed on this line
-	for(int j = 0; j < currntLength + 9; j++)
-		cout << " ";
-	cout << "\r";
-
-	//We pushed back all values in the 1024 byte large array buf, but the message may have been shorter than that, so...
-	int i = pBuffer.length() - 1;	//before decrypting, check how many null terminators are part of the cipher text vs were added to the back from buf, but weren't recieved
-	for(; i >= 0; i--)	//This is done by iterating from the back of the buffer, looking for where the first non zero value is
-	{
-		if(pBuffer[i] != '\0')
-			break;
-	}
-	while((i+1) % 16 != 0)		//Then increasing the position until it is a multiple of 16 (because AES uses blocks of 16 bytes)
-		i++;
-	pBuffer.erase(i+1, (pBuffer.length() - i));	//Erase Any null terminators that we don't want to decrypt, trailing zeros, from i to the end of the string
-	
-	cout << "Client: " << MyAES.Decrypt(SymKey, pBuffer, PeerIV);		//Print What we received
-	return;
 }
 
 void PeerToPeer::TryConnect(bool SendPublic)
@@ -383,7 +315,7 @@ void PeerToPeer::TryConnect(bool SendPublic)
 			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
 
 			//Send My Public Key And My Modulus Because We Started The Connection
-			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
 			{
 				perror("Connect failure");
 				return;

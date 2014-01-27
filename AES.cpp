@@ -55,7 +55,7 @@ string AES::Encrypt(mpz_class Key, string Msg, mpz_class& GMPIV)
 		
 		for(int col = 0; col < 4; col++)
 			for(int row = 0; row < 4; row++)
-				CipherText += State.p[col][row];
+				CipherText.push_back(State.p[col][row]);
 		
 		IV = State;
 	}
@@ -101,19 +101,13 @@ string AES::Decrypt(mpz_class Key, string Cipher, mpz_class& GMPIV)
 		State.AddRoundKey(Keys[0]);
 		State.AddRoundKey(IV);
 		
-		unsigned char zeros = 0;
 		for(int col = 0; col < 4; col++)
 		{
 			for(int row = 0; row < 4; row++)
 			{
-				if(State.p[col][row] != 0)
-					PlainText += State.p[col][row];
-				else
-					zeros++;
+				PlainText.push_back(State.p[col][row]);
 			}
 		}
-		if((unsigned char)PlainText[PlainText.length() - 1] == zeros)
-			PlainText[PlainText.length() -1] = '\0';
 			
 		IV = NextIV;
 	}
