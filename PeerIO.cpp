@@ -5,6 +5,7 @@
 
 int sendr(int socket, const char* buffer, int length, int flags);
 int recvr(int socket, char* buffer, int length, int flags);
+string GetName(string file);
 
 void PeerToPeer::SendFilePt1()
 {
@@ -14,11 +15,12 @@ void PeerToPeer::SendFilePt1()
 	if(File.is_open())
 	{
 		FileToSend = FileRequest;
+		FileRequest = GetName(FileRequest);
 		File.seekg(0, File.end);
 		unsigned int Length = File.tellg();
 		stringstream ss;
 		ss << Length;
-		FileRequest = "x" + ss.str() + "X" + FileRequest;
+		FileRequest = "x" + ss.str() + "X" + MyAES.Encrypt(SymKey, FileRequest);
 		FileRequest[0] = 1;
 		while(FileRequest.size() < 1047)
 			FileRequest.push_back('\0');
@@ -342,5 +344,20 @@ int sendr(int socket, const char* buffer, int length, int flags)
 		i += n;
 	}
 	return i;
+}
+
+string GetName(string file)
+{
+	int i = 0, j = 0;
+	while(true)
+	{
+		if((j = file.find("/", i)) == string::npos)
+			break;
+		else
+			i = j+1;
+	}
+	if(i != 0)
+		file.erase(0, i);
+	return file;
 }
 #endif

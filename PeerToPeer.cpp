@@ -203,6 +203,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							Sending = -1;		//Receive file mode
 							FileLength = atoi(Msg.substr(1, Msg.find("X", 1)-1).c_str());
 							FileLoc = Msg.substr(Msg.find("X", 1)+1, Msg.size());
+							FileLoc = MyAES.Decrypt(SymKey, FileLoc.c_str()).c_str();
 							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes<y/N>";
 							char c = getch();
 							cout << c;
