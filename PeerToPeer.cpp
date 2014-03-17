@@ -291,6 +291,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		fflush(stdout);		//Not always does cout print immediately, this forces it.
 	}//End While Loop
 	cout << "\n";
+	close(Serv);
+	close(Client);
 	return 0;
 }
 

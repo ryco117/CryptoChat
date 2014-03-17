@@ -222,9 +222,13 @@ void GMPSeed(gmp_randclass& rng)
 		fprintf(stderr, "Cannot open /dev/urandom!\n"); 
 		return;
 	}
-	fread(&seed, sizeof(seed), 1, random);
-	srand(seed); 		// seed the default random number generator
-	rng.seed(seed);	// seed the GMP random number generator
+	for(int i = 0; i < 20; i++)
+	{
+		fread(&seed, sizeof(seed), 1, random);
+		srand(seed); 		// seed the default random number generator
+		rng.seed(seed);	// seed the GMP random number generator
+	}
+	fclose(random);
 }
 
 string GetPassword()
