@@ -1,4 +1,5 @@
 #include "RSA.h"
+#include "base64.h"
 
 using namespace std;
 
@@ -76,7 +77,7 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	Keys[0] = 0;
 	Keys[1] = 0;
 	if(PrintVals)
-		cout << "The Modulus is " << Mod << "\n\n";
+		cout << "The Modulus is " << Export64(Mod) << "\n\n";
 
 	//Set Encryption Key (Public)
 	if(ForceRand)
@@ -90,7 +91,7 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	{
 		BigPrime(Keys[0], rng, 2048, 24);
 		if(PrintVals)
-			cout << Keys[0].get_str() << "\n\n";
+			cout << Export64(Keys[0]) << "\n\n";
 	}
 	else if(Temp.empty())
 	{

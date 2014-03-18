@@ -20,23 +20,16 @@ string AES::Encrypt(mpz_class Key, string Msg, mpz_class& GMPIV)
 	for(int i = 1; i < 11; i++)
 		Keys[i] = NextRound(Keys[i-1], i-1);
 	
+	unsigned char Pad = 16 - (Msg.length() % 16);
+	for(unsigned char i = 0; i < Pad; i++)
+		Msg.push_back(Pad);
+	
 	for(unsigned int i = 0; (i * 16) < Msg.length(); i++)		//For every 16 chars, fill the state matrix again.
 	{
-		if(((i+1) * 16) > Msg.length() && (Msg.length() % 16) != 0)		//What if there aren't n%16=0 chars? Fill the last matrix with extra zeros!
-		{
-			for(int j = 0; j < (Msg.length() % 16); j++)
-				State.p[j / 4][j % 4] = (unsigned char)Msg[(i * 16) + j];
-			
-			for(int j = (Msg.length() % 16); j < 16; j++)
-				State.p[j / 4][j % 4] = 0;
-			State.p[3][3] = 16 - (Msg.length() % 16) - 1;
-		}
-		else
-		{
-			for(int col = 0; col < 4; col++)
-				for(int row = 0; row < 4; row++)
-					State.p[col][row] = (unsigned char)Msg[(i * 16) + (4*col) + row];	//i * 16 controls which block we're on, the rest moves through the block
-		}
+		for(int col = 0; col < 4; col++)
+			for(int row = 0; row < 4; row++)
+				State.p[col][row] = (unsigned char)Msg[(i * 16) + (4*col) + row];	//i * 16 controls which block we're on, the rest moves through the block
+		
 		State.AddRoundKey(IV);	//This adds more randomness to strings with repeating blocks
 		State.AddRoundKey(Keys[0]);
 		for(int j = 0; j < 9; j++)
@@ -111,6 +104,8 @@ string AES::Decrypt(mpz_class Key, string Cipher, mpz_class& GMPIV)
 			
 		IV = NextIV;
 	}
+	int len = PlainText.length();
+	PlainText.resize(len - PlainText[len-1]);
 	delete[] Keys;
 	return PlainText;
 }

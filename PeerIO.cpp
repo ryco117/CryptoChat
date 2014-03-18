@@ -2,6 +2,7 @@
 #define PEER_IO
 #include "PeerToPeer.h"
 #include "KeyManager.h"
+#include "base64.h"
 
 int sendr(int socket, const char* buffer, int length, int flags);
 int recvr(int socket, char* buffer, int length, int flags);
@@ -20,9 +21,10 @@ void PeerToPeer::SendFilePt1()
 		unsigned int Length = File.tellg();
 		stringstream ss;
 		ss << Length;
-		FileRequest = "x" + ss.str() + "X" + MyAES.Encrypt(SymKey, FileRequest);
+		string EncName = MyAES.Encrypt(SymKey, FileRequest);
+		FileRequest = "x" + ss.str() + "X" + Base64Encode((char*)EncName.c_str(), EncName.length());
 		FileRequest[0] = 1;
-		while(FileRequest.size() < 1047)
+		while(FileRequest.size() < 1068)
 			FileRequest.push_back('\0');
 		
 		if(sendr(Client, FileRequest.c_str(), FileRequest.length(), 0) < 0)
@@ -62,41 +64,44 @@ void PeerToPeer::SendFilePt2()
 			FileLeft = 1024;
 		else
 		{
-			Sending = 0;	//file is done
+			Sending = 0;	//file is done after this
 			cout << "\r";
 			for(int i = 0; i < currntLength + 15; i++)
 				cout << " ";
 			cout << "\rFinished sending " << FileToSend << ", " << (FilePos + FileLeft) << " bytes were sent";
-			cout << "\nMessage: " << OrigText;
+			cout << "\nMessage: ";
 		}
-		
 		char* buffer = new char[1024];
 		for(int i = 0; i < 1024; i++)
 			buffer[i] = 0;
 		
 		File.seekg(FilePos, File.beg);
 		File.read(buffer, FileLeft);
-		FilePos += 1024;
+		FilePos += FileLeft;
 		
-		string Data = "";
+		string Data;
 		for(int i = 0; i < 1024; i++)
 			Data.push_back(buffer[i]);
-			
+		
 		mpz_class IV = RNG->get_z_bits(128);
-		string SIV = IV.get_str(58);
-		while(SIV.size() < 22)
-			SIV = "0" + SIV;
+		string SIV = Export64(IV);
+		while(SIV.size() < 27)
+			SIV.push_back('\0');
 		
 		string Final = "x";
 		Final += SIV;
 		Final += MyAES.Encrypt(SymKey, Data, IV);
 		Final[0] = 3;
-		int n = sendr(Client, Final.c_str(), Final.length(), 0);	//send the client the encrypted message
+		
+		int n = sendr(Client, Final.c_str(), Final.length(), 0);
 		if(n == -1)
 		{
 			perror("\nSendFilePt2");
 			Sending = 0;
 		}
+		
+		delete[] buffer;
+		File.close();
 	}
 	return;
 }
@@ -166,7 +171,7 @@ void PeerToPeer::SendMessage()
 	cout << "\r";
 	
 	cout << "Me: " << OrigText << endl;		//print "me: " then the message
-	while(CipherMsg.size() < 1047)
+	while(CipherMsg.size() < 1068)
 		CipherMsg.push_back('\0');
 	sendr(Client, CipherMsg.c_str(), CipherMsg.length(), 0);	//send the client the encrypted message
 
@@ -226,10 +231,9 @@ void PeerToPeer::ParseInput()
 			else
 			{
 				IV = RNG->get_z_bits(128);
-				CipherMsg = IV.get_str(58);
-				while(CipherMsg.size() < 22)
-					CipherMsg = "0" + CipherMsg;
-				CipherMsg = "x" + CipherMsg;
+				CipherMsg = "x" + Export64(IV);
+				while(CipherMsg.size() < 28)
+					CipherMsg.push_back('\0');
 				CipherMsg[0] = 0;
 				CipherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 				SendMessage();
@@ -292,10 +296,9 @@ void PeerToPeer::ParseInput()
 			{
 				TempValues = OrigText;
 				IV = RNG->get_z_bits(128);
-				CipherMsg = IV.get_str(58);
-				while(CipherMsg.size() < 22)
-					CipherMsg = "0" + CipherMsg;
-				CipherMsg = "x" + CipherMsg;
+				CipherMsg = "x" + Export64(IV);
+				while(CipherMsg.size() < 28)
+					CipherMsg.push_back('\0');
 				CipherMsg[0] = 0;
 				CipherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 				SendMessage();

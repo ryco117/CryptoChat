@@ -15,12 +15,12 @@ Toggles:
 String Inputs:
 -ip	--ip-address		specify the ip address to attempt to connect to																				works							
 -o	--output			save the rsa keys generated to files which can be reused																		works
--sp,	--save-public		save the peers public key to a specified file
+-sp,	--save-public		save the peers public key to a specified file																					works
 -lk	--load-keys		specify the files to load rsa keys from (public and private) that we will use														works
--lp	--load-public		specify the file to load rsa public key from that the peer has the private key to													implemented without checked
+-lp	--load-public		specify the file to load rsa public key from that the peer has the private key to													works
 
 Integer Inputs:
--P, --ports		the port number to open and connect to
+-P, --ports		the port number to open and connect to																						implemented without checking
 
 Input Argument Examples:
 -ip 192.168.1.70	will connect to 192.168.1.70

@@ -1,5 +1,6 @@
 #include "PeerToPeer.h"
 #include "KeyManager.h"
+#include "base64.h"
 #include "PeerIO.cpp"
 
 int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SavePublic)
@@ -119,30 +120,43 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					
 					if(ClientMod == 0)		//Check if we haven't already assigned the client's public key through an arg.
 					{
-						char TempValArray[1060] = {'\0'};
-						string TempValString;
-						while(TempValString.empty())		//while the string we are filling with received data is empty...
-						{
-							recvr(newSocket, TempValArray, 1060, 0);
-							TempValString = TempValArray;
-						}
-
-						ClientMod = mpz_class(TempValString.substr(0, 705), 58);	//They sent in base 58, we must read in it. Chars 0 - 704 are for the modulus
-						//cout << "CM: " << ClientMod << "\n\n";
-						ClientE = mpz_class(TempValString.substr(705, 355), 58);	//Chars 705 - 1059 (355 chars to read) are for the much smaller encryption value
-						//cout << "CE: " << ClientE << "\n\n";
+						char TempVA[1060] = {'\0'};
+						string TempVS;
+						recvr(newSocket, TempVA, 1060, 0);
+						TempVS = TempVA;
 						
+						try
+						{
+							Import64(TempVS.substr(0, TempVS.find("|", 1)), ClientMod);	//Modulus in Base64 in first half
+							//cout << "CM: " << Export64(ClientMod) << "\n\n";
+						}
+						catch(int e)
+						{
+							cout << "The received modulus is bad\n";
+							return -1;
+						}
+						
+						try
+						{
+							Import64(TempVS.substr(TempVS.find("|", 1)+1), ClientE);	//Encryption key in Base64 in second half
+							//cout << "CE: " << Export64(ClientE) << "\n\n";
+						}
+						catch(int e)
+						{
+							cout << "The received RSA encryption key is bad\n";
+							return -1;
+						}
 						if(!SavePublic.empty())		//If we set the string for where to save their public key...
 							MakePublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
 					}
 				}
 				else		//Data is on a new socket
 				{
-					char buf[1047] = {'\0'};	//1047 is the max possible incoming data (file part with iv and leading byte)
-					for(unsigned int j = 0; j < 1047; j++)
+					char buf[1068] = {'\0'};	//1068 is the max possible incoming data (file part with iv and leading byte)
+					for(unsigned int j = 0; j < 1068; j++)
 						buf[j] = '\0';
 					
-					if((nbytes = recvr(MySocks[i], buf, 1047, 0)) <= 0)		//handle data from a client
+					if((nbytes = recvr(MySocks[i], buf, 1068, 0)) <= 0)		//handle data from a client
 					{
 						// got error or connection closed by client
 						if(nbytes == 0)
@@ -168,7 +182,16 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					else if(SentStuff == 2)		//if SentStuff == 2, then we still need the symmetric key
 					{
 						string ClntKey = buf;
-						SymKey += MyRSA.BigDecrypt(MyMod, MyD, mpz_class(ClntKey, 58));		//They sent their sym key with our public key. Decrypt it!
+						mpz_class TempKey;
+						try
+						{
+							Import64(ClntKey, TempKey);
+						}
+						catch(int e)
+						{
+							cout << "The received symmetric key is bad\n";
+						}
+						SymKey += MyRSA.BigDecrypt(MyMod, MyD, TempKey);		//They sent their sym key with our public key. Decrypt it!
 						
 						mpz_class LargestAllowed = 0;
 						mpz_class One = 1;
@@ -184,13 +207,20 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 											//2 = request answer, 1 char for answer
 											//3 = file piece , 22 chars for IV		, 1024 bytes of file piece (or less)
 						
-						for(unsigned int i = 0; i < 1047; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
+						for(unsigned int i = 0; i < 1068; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
 							Msg.push_back(buf[i]);						//so manually push back all values in array buf...
-						if(Msg[0] == 0)									//		^
-						{												//		|
-							PeerIV = mpz_class(Msg.substr(1, 22), 58);	//		|
-							Msg = Msg.substr(23, 512);					//		|
-							DropLine(Msg);								//		|   causes a problem which i will explain in this function.
+						if(Msg[0] == 0)
+						{
+							try
+							{
+								Import64(Msg.substr(1, 27), PeerIV);
+							}
+							catch(int e)
+							{
+								cout << "The received IV is bad\n";
+							}
+							Msg = Msg.substr(28, 512);
+							DropLine(Msg);
 							if(Sending == 0)
 								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
 							else if(Sending == 1)
@@ -202,8 +232,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							Sending = -1;		//Receive file mode
 							FileLength = atoi(Msg.substr(1, Msg.find("X", 1)-1).c_str());
-							FileLoc = Msg.substr(Msg.find("X", 1)+1, Msg.size());
-							FileLoc = MyAES.Decrypt(SymKey, FileLoc.c_str()).c_str();
+							FileLoc = Msg.substr(Msg.find("X", 1)+1);
+							FileLoc = MyAES.Decrypt(SymKey, Base64Decode(FileLoc)).c_str();
 							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes<y/N>";
 							char c = getch();
 							cout << c;
@@ -220,7 +250,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							string Accept = "xx";
 							Accept[0] = 2;
 							Accept[1] = c;
-							while(Accept.size() < 1047)
+							while(Accept.size() < 1068)
 								Accept.push_back('\0');
 							sendr(Client, Accept.c_str(), Accept.length(), 0);
 							cout << "\nMessage: " << OrigText;
@@ -250,13 +280,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							try
 							{
-								FileIV = mpz_class(Msg.substr(1, 22), 58);
+								Import64(Msg.substr(1, 27), FileIV);
 							}
-							catch(exception& e)
+							catch(int e)
 							{
 								cout << "Bad IV value when receiving file\n";
 							}
-							ReceiveFile(Msg.substr(23, 1024));
+							ReceiveFile(Msg.substr(28));
 						}
 					}
 				}
@@ -277,8 +307,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		if(SentStuff == 1 && ClientMod != 0 && ClientE != 0)		//We have established a connection and we have their keys!
 		{
-			string MyValues = (MyRSA.BigEncrypt(ClientMod, ClientE, SymKey)).get_str(58);	//Encrypt The Symmetric Key With Their Public Key, base 58
-			while(MyValues.size() < 1047)
+			string MyValues = Export64(MyRSA.BigEncrypt(ClientMod, ClientE, SymKey));	//Encrypt The Symmetric Key With Their Public Key, base 64
+			while(MyValues.size() < 1068)
 				MyValues.push_back('\0');
 			//Send The Encrypted Symmetric Key
 			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
@@ -306,16 +336,13 @@ void PeerToPeer::TryConnect(bool SendPublic)
 			string TempValues = "";
 			string MyValues = "";
 
-			TempValues = MyMod.get_str(58);		//Base 58 will save digits
-			while(TempValues.length() < 705)	//Make sure modulus is 705 chars long
-				TempValues = "0" + TempValues;	//do this by adding leading zeros (to not change value)
+			TempValues = Export64(MyMod);		//Base64 will save digits
+			MyValues = TempValues + "|";		//Pipe char to seperate keys
 
-			MyValues = TempValues;
-
-			TempValues = MyE.get_str(58);
-			while(TempValues.length() < 355)	//makes sure exp is 355 chars long
-				TempValues = "0" + TempValues;	//do this by adding leading zeros (to not change value)
+			TempValues = Export64(MyE);
 			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
+			while(MyValues.length() < 1060)
+				MyValues.push_back('\0');
 
 			//Send My Public Key And My Modulus Because We Started The Connection
 			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)

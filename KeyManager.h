@@ -4,9 +4,9 @@
 #include <string>
 #include <sstream>
 #include <gmpxx.h>
-#include <exception>
 
 #include "AES.cpp"
+#include "base64.h"
 
 bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 {
@@ -24,9 +24,9 @@ bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 		getline(File, Values);
 		try
 		{
-			Modulus = mpz_class(Values, 58);
+			Import64(Values, Modulus);		//Decode Base64 Values and store into Modulus
 		}
-		catch(exception& e)
+		catch(int e)
 		{
 			cout << "Could not load modulus from " << FileLoc << endl;
 			return false;
@@ -36,9 +36,9 @@ bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 		getline(File, Values);
 		try
 		{
-			Enc = mpz_class(Values, 58);
+			Import64(Values, Enc);		//Decode Base64 Values and store into Enc
 		}
-		catch(exception& e)
+		catch(int e)
 		{
 			cout << "Could not load encryption value from " << FileLoc << endl;
 			return false;
@@ -85,9 +85,9 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		}
 		try
 		{
-			Dec = mpz_class(Original.substr(pos, string::npos), 58);
+			Import64(Original.substr(pos+1, string::npos), Dec);
 		}
-		catch(exception& e)
+		catch(int e)
 		{
 			cout << "Could not load decryption value from " << FileLoc << endl;
 			return false;
@@ -108,8 +108,8 @@ void MakePublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	if(File.is_open())
 	{
 		File << "crypto-key\n";
-		File << Modulus.get_str(58) << "\n";
-		File << Enc.get_str(58) << "\n";
+		File << Export64(Modulus) << "\n";
+		File << Export64(Enc) << "\n";
 		File.close();
 	}
 	else
@@ -123,13 +123,14 @@ void MakePrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 	if(File.is_open())
 	{
 		string Original = "crypto-key\n";
-		Original += Dec.get_str(58);
+		Original += Export64(Dec);
 		AES crypt;
 		string Cipher;
 		if(!Passwd.empty())
 			Cipher = crypt.Encrypt(mpz_class(Passwd, 16), Original);
 		else
 			Cipher = Original;
+		
 		File.write(Cipher.c_str(), Cipher.length());
 		File.close();
 	}
