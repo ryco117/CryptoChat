@@ -49,7 +49,7 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	{
 		BigPrime(PrimeP, rng, 2048, 24);
 		if(PrintVals)
-			cout << PrimeP.get_str() << "\n\n";
+			cout << Export64(PrimeP) << "\n\n";
 	}
 	else
 		PrimeP = mpz_class(Temp);
@@ -65,7 +65,7 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	{
 		BigPrime(PrimeQ, rng, 2048, 24);
 		if(PrintVals)
-			cout << PrimeQ.get_str() << "\n\n";
+			cout << Export64(PrimeQ) << "\n\n";
 	}
 	else
 		PrimeQ = mpz_class(Temp);
@@ -107,8 +107,8 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	
 	if(PrintVals)
 	{
-		cout << "Eulers Totient: " << EulersTot << "\n\n";
-		cout << "D is equal to: " << Keys[1] << "\n\n";
+		cout << "Eulers Totient: " << Export64(EulersTot) << "\n\n";
+		cout << "D is equal to: " << Export64(Keys[1]) << "\n\n";
 	}
 	return;
 }

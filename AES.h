@@ -237,6 +237,7 @@ public:
 			cout << endl;
 		}
 		cout << endl;
+		cout.flags(ios::dec);
 		return;
 	}
 	
@@ -363,17 +364,23 @@ public:
 	}
 };
 
-mat4 NextRound(mat4 Key, int round)
+mat4 NextRound(mat4 Key[15], int round)
 {
-	mat4 NewRound = mat4((unsigned char)0);;
-	for(int row = 0; row < 4; row++)
+	mat4 NewRound = mat4((unsigned char)0);
+	if(round % 2 == 0)
 	{
-		NewRound.p[0][row] = Key.p[0][row] ^ sbox[Key.p[3][(row+1)%4]] ^ rcon[(round * 4) + row];
+		for(int row = 0; row < 4; row++)
+			NewRound.p[0][row] = Key[round-2].p[0][row] ^ sbox[Key[round-1].p[3][(row+1)%4]] ^ rcon[(round-2)*2 + row];
+	}
+	else
+	{
+		for(int row = 0; row < 4; row++)
+			NewRound.p[0][row] = Key[round-2].p[0][row] ^ sbox[Key[round-1].p[3][row]];
 	}
 	
 	for(int col = 1; col < 4; col++)
 		for(int row = 0; row < 4; row++)
-			NewRound.p[col][row] = Key.p[col][row] ^ NewRound.p[col-1][row];
+			NewRound.p[col][row] = Key[round-2].p[col][row] ^ NewRound.p[col-1][row];
 			
 	return NewRound;
 }

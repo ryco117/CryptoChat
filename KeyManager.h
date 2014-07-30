@@ -4,6 +4,10 @@
 #include <string>
 #include <sstream>
 #include <gmpxx.h>
+extern "C"
+{
+	#include <libscrypt.h>
+}
 
 #include "AES.cpp"
 #include "base64.h"
@@ -53,27 +57,67 @@ bool LoadPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	return true;
 }
 
-bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
+bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 {
 	fstream File(FileLoc.c_str(), ios::in);
 	if(File.is_open())
 	{
+		char Salt64[24] = {0};
+		char IVStr[24] = {0};
+		mpz_class IV = 0;
+		char Hash[32] = {0};
+		mpz_class FinalKey = 0;
+		int n = 0;
+
 		unsigned int FileLength = 0;
 		File.seekg(0, File.end);
 		FileLength = File.tellg();
 		File.seekg(0, File.beg);
 		
-		char* Cipher = new char[FileLength];
-		File.read(Cipher, FileLength);
+		if(!Passwd->empty())
+		{
+			File.read(Salt64, 24);
+			string Salt = Base64Decode(string((const char*)Salt64, 24));
+			File.read(IVStr, 24);
+			Import64(string((const char*)IVStr, 24), IV);
+
+			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt.c_str(), 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+
+			//VERY IMPORTANT! Clear password from memory once it is no longer needed
+			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
+			Passwd->clear();
+
+			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
+
+			//Hash needs to be DELETED!
+			for(int i = 0; i < 32; i++)
+				Hash[i] = 0;
+		}
+
+		n = FileLength-File.tellg();
+		char* Cipher = new char[n];
+		File.read(Cipher, n);
+		
 		AES crypt;
 		string Original;
-		
 		string SCipher = "";
-		for(int i = 0; i < FileLength; i++)
+		for(int i = 0; i < n; i++)
 			SCipher.push_back(Cipher[i]);
-		
-		if(!Passwd.empty())
-			Original = crypt.Decrypt(mpz_class(Passwd, 16), SCipher);
+
+		if(FinalKey != 0)
+		{
+			try
+			{
+				Original = crypt.Decrypt(FinalKey, SCipher, IV);
+			}
+			catch(string e)
+			{
+				cout << "Error: Incorrect password or format\n";
+				delete[] Cipher;
+				return false;
+			}
+			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
+		}
 		else
 			Original = SCipher;
 		
@@ -81,6 +125,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		if(Original.substr(0, pos) != "crypto-key")		//Check for proper format
 		{
 			cout << "Error: Incorrect password or format\n";
+			delete[] Cipher;
 			return false;
 		}
 		try
@@ -90,8 +135,10 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
 		catch(int e)
 		{
 			cout << "Could not load decryption value from " << FileLoc << endl;
+			delete[] Cipher;
 			return false;
 		}
+		delete[] Cipher;
 		File.close();
 	}
 	else
@@ -117,21 +164,46 @@ void MakePublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	return;
 }
 
-void MakePrivateKey(string FileLoc, mpz_class& Dec, string Passwd)
+void MakePrivateKey(string FileLoc, mpz_class& Dec, string* Passwd, char* Salt, mpz_class& IV)
 {
 	fstream File(FileLoc.c_str(), ios::out | ios::trunc);
 	if(File.is_open())
 	{
 		string Original = "crypto-key\n";
+		char Hash[32] = {0};
+		mpz_class FinalKey = 0;
+		int n = 0;
+		
+		if(!Passwd->empty())
+		{
+			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+
+			//VERY IMPORTANT! Clear password from memory once it is no longer needed		
+			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
+			Passwd->clear();
+
+			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
+
+			//Hash needs to be DELETED!
+			for(int i = 0; i < 32; i++)
+				Hash[i] = 0;
+		}
+		
 		Original += Export64(Dec);
 		AES crypt;
 		string Cipher;
-		if(!Passwd.empty())
-			Cipher = crypt.Encrypt(mpz_class(Passwd, 16), Original);
+		if(FinalKey != 0)
+			Cipher = crypt.Encrypt(FinalKey, Original, IV);
 		else
 			Cipher = Original;
-		
-		File.write(Cipher.c_str(), Cipher.length());
+
+		if(FinalKey != 0)
+		{
+			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
+			File.write(Base64Encode(Salt, 16).c_str(), 24);		//Write the salt in base64
+			File.write(Export64(IV).c_str(), 24);			//Write the IV in base64
+		}
+		File.write(Cipher.c_str(), Cipher.length());		//Write all the jibberish
 		File.close();
 	}
 	else

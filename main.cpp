@@ -7,7 +7,6 @@
 #include "PeerToPeer.cpp"
 #include "myconio.h"
 #include "KeyManager.h"
-#include "md5.h"
 
 using namespace std;
 
@@ -16,10 +15,12 @@ void PrintIP();
 string GetPassword();
 
 string HelpString = \
-"Arguments List\n\n\
+"Secure chat program written by Ryan Andersen\n\
+Contact at ryco117@gmail.com\n\n\
+Arguments List\n\n\
 Toggles:\n\
 -p,\t--print\t\t\tprint all generated encryption values\n\
--r,\t--random\t\trandomly generate all encryption values without prompting\n\
+-m,\t--manual\t\tWARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging\n\
 -dp,\t--disable-public\tdon't send our public key at connection. WARNING! peer must use -lp and have our public key\n\
 -h,\t--help\t\t\tprint this dialogue\n\n\
 String Inputs:\n\
@@ -29,20 +30,20 @@ String Inputs:\n\
 -lk,\t--load-keys\t\tspecify the files to load rsa keys from (public and private) that we will use\n\
 -lp,\t--load-public\t\tspecify the file to load rsa public key from that the peer has the private key to. WARNING! peer must use -dp\n\n\
 Integer Inputs:\n\
--P, --ports\t\tthe port number to open and connect to\n\n\
+-P, --ports\t\t\tthe port number to open and connect to\n\n\
 Input Argument Examples:\n\
--ip 192.168.1.70\twill connect to 192.168.1.70\n\
--o newKeys\t\twill produce newKeys.pub and newKeys.priv\n\
--sp peerKey.pub\t\twill create the file peerKey.pub with the peer's rsa public key\n\
--lk Keys\t\twill load the rsa values from the files Keys.pub and Keys.priv\n\
--lp PeerKey.pub\t\twill load the peer's public key from PeerKey.pub\n\
--P 4321\t\twill open port number 4321 for this session, and will connect to the same number\n\n";
+-ip 192.168.1.70\t\twill attempt to connect to 192.168.1.70\n\
+-o newKeys\t\t\twill produce newKeys.pub and newKeys.priv\n\
+-sp peerKey.pub\t\t\twill create the file peerKey.pub with the peer's rsa public key\n\
+-lk Keys\t\t\twill load the rsa values from the files Keys.pub and Keys.priv\n\
+-lp PeerKey.pub\t\t\twill load the peer's public key from PeerKey.pub\n\
+-P 4321\t\t\t\twill open port number 4321 for this session, and will connect to the same number\n\n";
 
 int main(int argc, char* argv[])
 {
 	//This will be used for all randomness for the rest of the execution... seed well
 	gmp_randclass rng(gmp_randinit_default);		//Define a gmp_randclass, initialize with default value
-	GMPSeed(rng);								//Pass randclass to function to seed it for more random values
+	GMPSeed(rng);						//Pass randclass to function to seed it for more random values
 	
 	PeerToPeer MyPTP;
 	MyPTP.Port = 5001;
@@ -52,12 +53,12 @@ int main(int argc, char* argv[])
 	
 	RSA NewRSA;
 	AES Cipher;
-	mpz_class SymmetricKey = rng.get_z_bits(128);		//Create a 128 bit long random value as our key
+	mpz_class SymmetricKey = rng.get_z_bits(256);		//Create a 128 bit long random value as our key
 	mpz_class Keys[2] = {0};
 	mpz_class Mod = 0;
 	
 	bool PrintVals = false;
-	bool ForceRand = false;
+	bool ForceRand = true;
 	bool SendPublic = true;
 	string SavePublic = "";
 	string OutputFiles = "";
@@ -67,8 +68,8 @@ int main(int argc, char* argv[])
 		string Arg = string(argv[i]);
 		if(Arg == "-p" || Arg == "--print")
 			PrintVals = true;
-		else if(Arg == "-r" || Arg == "--random")
-			ForceRand = true;
+		else if(Arg == "-m" || Arg == "--manual")
+			ForceRand = false;
 		else if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
 		{
 			MyPTP.ClntIP = argv[i+1];
@@ -79,7 +80,7 @@ int main(int argc, char* argv[])
 			}
 			i++;
 		}
-		else if((Arg == "-o" || Arg == "--output") && i+1 < argc)		//Write two keys files
+		else if((Arg == "-o" || Arg == "--output") && i+1 < argc)	//Write two keys files
 		{
 			OutputFiles = argv[i+1];
 			i++;
@@ -90,22 +91,19 @@ int main(int argc, char* argv[])
 			string PrivKeyName = string(argv[i+1]) + ".priv";
 			cout << "Private Key Password: ";
 			fflush(stdout);
+			
 			string Passwd = GetPassword();
-			if(!Passwd.empty())
-				Passwd = stringMD5(Passwd);
+			if(!LoadPrivateKey(PrivKeyName, Keys[1], &Passwd))
+			{
+				Keys[1] = 0;
+				return -1;
+			}
 			if(!LoadPublicKey(PubKeyName, Mod, Keys[0]))
 			{
 				Mod = 0;
 				Keys[0] = 0;
-				return 0;
-			}
-			else		//No point trying to set the private key if the public failed
-			{
-				if(!LoadPrivateKey(PrivKeyName, Keys[1], Passwd))
-				{
-					Keys[1] = 0;
-					return 0;
-				}
+				Keys[1] = 0;
+				return -1;
 			}
 			i++;
 		}
@@ -128,7 +126,7 @@ int main(int argc, char* argv[])
 			}
 			i++;
 		}
-		else if(Arg == "-dp" || Arg == "--disable-public")				//WARNIG only if peer already has public and uses -lp
+		else if(Arg == "-dp" || Arg == "--disable-public")		//WARNIG only if peer already has public your public key and uses -lp
 			SendPublic = false;
 		else if((Arg == "-sp" || Arg == "--save-public") && i+1 < argc)
 		{
@@ -148,13 +146,13 @@ int main(int argc, char* argv[])
 	#endif
 
 	if(PrintVals)
-		cout <<"Symmetric Key: " << SymmetricKey << "\n\n";
+		cout <<"Symmetric Key: 0x" << SymmetricKey.get_str(16) << "\n\n";
 	
 	GMPSeed(rng);		//Reseed for more secure random goodness
-	if(Mod == 0)		//If one is set, they all must be set
+	if(Mod == 0)		//If one is not set, they all must be set (And if one has a set value, they all must)
 		NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
 		
-	if(!OutputFiles.empty())		//So, we want to output something
+	if(!OutputFiles.empty())		//So, we want to output the generated keys
 	{
 		string PubKeyName = OutputFiles + ".pub";
 		string PrivKeyName = OutputFiles + ".priv";
@@ -175,16 +173,26 @@ int main(int argc, char* argv[])
 				getline(cin, Answer);
 				if(Answer == "n" || Answer == "N")
 				{
-					cout << "Giving up on key creation\n\n";
+					cout << "Giving up on key creation\n\n";		//Because of a mistype? Pathetic...
 					break;
 				}
 			}
 			else
 			{
-				if(!Passwd1.empty())
-					Passwd1 = stringMD5(Passwd1);
+				char SaltStr[16] = {0};
+				int n = 0;
+
+				mpz_class Salt = rng.get_z_bits(128);
+				mpz_export(SaltStr, (size_t*)&n, 1, 1, 0, 0, Salt.get_mpz_t());
+				mpz_class TempIV = rng.get_z_bits(128);
+				if(PrintVals)
+				{
+					cout << "Salt: " << Export64(Salt) << endl;
+					cout << "IV: " << TempIV.get_str(16) << endl;
+				}
+
+				MakePrivateKey(PrivKeyName, Keys[1], &Passwd1, SaltStr, TempIV);
 				MakePublicKey(PubKeyName, Mod, Keys[0]);
-				MakePrivateKey(PrivKeyName, Keys[1], Passwd1);
 				break;
 			}
 		}
@@ -197,6 +205,7 @@ int main(int argc, char* argv[])
 	MyPTP.SymKey = SymmetricKey;
 	GMPSeed(rng);
 	MyPTP.RNG = &rng;
+
 	if(MyPTP.StartServer(1, SendPublic, SavePublic) != 0)			//Jump to the loop to handle all incoming connections and data sending
 	{
 		nonblock(false, true);
@@ -225,8 +234,8 @@ void GMPSeed(gmp_randclass& rng)
 	for(int i = 0; i < 20; i++)
 	{
 		fread(&seed, sizeof(seed), 1, random);
-		srand(seed); 		// seed the default random number generator
-		rng.seed(seed);	// seed the GMP random number generator
+		srand(seed); 		//seed the default random number generator
+		rng.seed(seed);		//seed the GMP random number generator
 	}
 	fclose(random);
 }

@@ -12,13 +12,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		return -1;
 	}
 	
-	memset(&socketInfo, 0, sizeof(socketInfo));			//Clear data inside socketInfo to be filled with server stuff
+	memset(&socketInfo, 0, sizeof(socketInfo));				//Clear data inside socketInfo to be filled with server stuff
 	socketInfo.sin_family = AF_INET;					//Use IP addresses
-	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);		//Allow connection from anybody
+	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);				//Allow connection from anybody
 	socketInfo.sin_port = htons(Port);					//Use port Port
 	
 	int optval = 1;
-	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);		//Remove Bind already used error
+	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);	//Remove Bind already used error
 	if(bind(Serv, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) < 0)	//Bind socketInfo to Serv
 	{
 		close(Serv);
@@ -28,7 +28,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	listen(Serv, MAX_CLIENTS);			//Listen for connections on Serv
 	
 	//		**-CLIENT-**
-	if(ClntIP.empty())					//If we didn't set the client ip as an argument
+	if(ClntIP.empty())				//If we didn't set the client ip as an argument
 	{
 		while(!IsIP(ClntIP))			//Keep going until we enter a real ip
 		{
@@ -40,31 +40,31 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	}
 	
 	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);			//assign Client to a file descriptor (socket) that uses IP addresses, TCP
-	memset(&socketInfo, 0, sizeof(socketInfo));					//Clear socketInfo to be filled with client stuff
-	socketInfo.sin_family = AF_INET;							//uses IP addresses
-	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
-	socketInfo.sin_port = htons(Port);							//uses port Port
+	memset(&socketInfo, 0, sizeof(socketInfo));				//Clear socketInfo to be filled with client stuff
+	socketInfo.sin_family = AF_INET;					//uses IP addresses
+	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());			//connects to the ip we specified
+	socketInfo.sin_port = htons(Port);					//uses port Port
 	
 	//		**-FILE DESCRIPTORS-**
-	FD_ZERO(&master);											//clear data in master
-	FD_SET(Serv, &master);										//set master to check file descriptor Serv
-	read_fds = master;											//the read_fds will check the same FDs as master
+	FD_ZERO(&master);							//clear data in master
+	FD_SET(Serv, &master);							//set master to check file descriptor Serv
+	read_fds = master;							//the read_fds will check the same FDs as master
 	
-	MySocks = new int[MAX_CLIENTS + 1];							//MySocks is a new array of sockets (ints) as long the max connections + 1
-	MySocks[0] = Serv;											//first socket is the server FD
+	MySocks = new int[MAX_CLIENTS + 1];					//MySocks is a new array of sockets (ints) as long the max connections + 1
+	MySocks[0] = Serv;							//first socket is the server FD
 	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)			//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
 		MySocks[i] = -1;
-	timeval zero = {0, 50};										//called zero for legacy reasons... assign timeval 50 milliseconds
-	fdmax = Serv;												//fdmax is the highest file descriptor to check (because they are just ints)
+	timeval zero = {0, 50};							//called zero for legacy reasons... assign timeval 50 milliseconds
+	fdmax = Serv;								//fdmax is the highest file descriptor to check (because they are just ints)
 	
 	//Progress checks
 	SentStuff = 0;
-	GConnected = false;											//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
+	GConnected = false;							//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
 	ConnectedClnt = false;
 	ConnectedSrvr = false;
 	ContinueLoop = true;
 	
-	nonblock(true, false);
+	nonblock(true, false);							//nonblocking input, disable echo
 	while(ContinueLoop)
 	{
 		if(!GConnected && ConnectedClnt && ConnectedSrvr && SentStuff == 3)	//All values have been sent, then set, but we haven't begun! Start already!
@@ -79,7 +79,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			cout << "Message: ";
 		}
 		
-		read_fds = master;			//assign read_fds back to the unchanged master
+		read_fds = master;						//assign read_fds back to the unchanged master
 		if(select(fdmax+1, &read_fds, NULL, NULL, &zero) == -1)		//Check for stuff to read on sockets, up to fdmax+1.. stop check after timeval zero (50ms)
 		{
 			cout << "\r";
@@ -92,11 +92,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		for(unsigned int i = 0; i < MAX_CLIENTS + 1; i++)		//Look through all sockets
 		{
-			if(MySocks[i] == -1)		//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
+			if(MySocks[i] == -1)					//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
 				continue;
-			if(FD_ISSET(MySocks[i], &read_fds))		//check read_fds to see if there is unread data in MySocks[i]
+			if(FD_ISSET(MySocks[i], &read_fds))			//check read_fds to see if there is unread data in MySocks[i]
 			{
-				if(i == 0)		//if i = 0, then based on line 52, we know that we are looking at data on the Serv socket... This means new connection!!
+				if(i == 0)		//if i = 0, then based on line 52, we know that we are looking at data on the Serv socket... This means a new connection!!
 				{
 					if((newSocket = accept(Serv, NULL, NULL)) < 0)		//assign socket newSocket to the person we are accepting on Serv
 					{
@@ -113,7 +113,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							MySocks[j] = newSocket;
 							if(newSocket > fdmax)		//if the new file descriptor is greater than fdmax..
-								fdmax = newSocket;		//change fdmax to newSocket
+								fdmax = newSocket;	//change fdmax to newSocket
 							break;
 						}
 					}
@@ -310,6 +310,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			string MyValues = Export64(MyRSA.BigEncrypt(ClientMod, ClientE, SymKey));	//Encrypt The Symmetric Key With Their Public Key, base 64
 			while(MyValues.size() < 1068)
 				MyValues.push_back('\0');
+			
 			//Send The Encrypted Symmetric Key
 			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
 			{

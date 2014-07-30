@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <netdb.h>
 
 #include "RSA.cpp"
 #include "AES.cpp"
