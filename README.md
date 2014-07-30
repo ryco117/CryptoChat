@@ -32,11 +32,11 @@ Input Argument Examples:
 -sp peerKey.pub			will create the file peerKey.pub with the peer's rsa public key
 -lk Keys			will load the RSA values from the files Keys.pub and Keys.priv
 -lp PeerKey.pub			will load the peer's public key from PeerKey.pub
--P 4321				will open port number 4321 for this session, and will connect to the same number 
+-P 4321				will open port number 4321 for this session, and will connect to the same number
 
 How To Build
 ============
 x86
-g++ -o bin/CryptoChat -O3 main.cpp -lgmpxx -lgmp -lscrypt -w -static
+make
 Android
-/usr/android-toolchain/bin/arm-linux-androideabi-g++ -static -O3 main.cpp -I/usr/android-toolchain/include -L/usr/android-toolchain/lib -lgmpxx -lgmp -lscrypt -o bin/AndroidChat -DANDROID -w	(This is really just for  me, your environment is most likey very different)
+make android
