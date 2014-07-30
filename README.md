@@ -37,6 +37,6 @@ Input Argument Examples:
 How To Build
 ============
 x86
-g++ -o bin/CryptoChat -O3 main.cpp -lgmpxx -lgmp -lscrypt -w -static
+make
 Android
-/usr/android-toolchain/bin/arm-linux-androideabi-g++ -static -O3 main.cpp -I/usr/android-toolchain/include -L/usr/android-toolchain/lib -lgmpxx -lgmp -lscrypt -o bin/AndroidChat -DANDROID -w	(This is really just for  me, your environment is most likey very different)
+make android
