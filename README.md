@@ -32,7 +32,7 @@ Input Argument Examples:
 -sp peerKey.pub			will create the file peerKey.pub with the peer's rsa public key
 -lk Keys			will load the RSA values from the files Keys.pub and Keys.priv
 -lp PeerKey.pub			will load the peer's public key from PeerKey.pub
--P 4321				will open port number 4321 for this session, and will connect to the same number
+-P 4321				will open port number 4321 for this session, and will connect to the same number 
 
 How To Build
 ============
