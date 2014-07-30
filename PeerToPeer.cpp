@@ -231,9 +231,18 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						else if(Msg[0] == 1)
 						{
 							Sending = -1;		//Receive file mode
-							FileLength = atoi(Msg.substr(1, Msg.find("X", 1)-1).c_str());
-							FileLoc = Msg.substr(Msg.find("X", 1)+1);
-							FileLoc = MyAES.Decrypt(SymKey, Base64Decode(FileLoc)).c_str();
+							Import64(Msg.substr(1, 27), PeerIV);
+							string PlainText;
+							try
+							{
+								PlainText = MyAES.Decrypt(SymKey, Msg.substr(28), PeerIV);
+							}
+							catch(string e)
+							{
+								cout << e << endl;
+							}
+							FileLength = atoi(PlainText.substr(0, PlainText.find("X", 1)).c_str());
+							FileLoc = PlainText.substr(PlainText.find("X", 1)+1);
 							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes<y/N>";
 							char c = getch();
 							cout << c;

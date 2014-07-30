@@ -21,11 +21,17 @@ void PeerToPeer::SendFilePt1()
 		unsigned int Length = File.tellg();
 		stringstream ss;
 		ss << Length;
-		string EncName = MyAES.Encrypt(SymKey, FileRequest);
-		FileRequest = "x" + ss.str() + "X" + Base64Encode((char*)EncName.c_str(), EncName.length());
+
+		mpz_class IV = RNG->get_z_bits(128);
+		string EncName = ss.str() + "X" + FileRequest;
+		while(EncName.size() < 1024)
+			EncName.push_back('\0');
+		EncName = MyAES.Encrypt(SymKey, EncName, IV);
+		string IVStr = Export64(IV);
+		while(IVStr.size() < 27)
+			IVStr.push_back('\0');
+		FileRequest = "x" + IVStr + EncName;
 		FileRequest[0] = 1;
-		while(FileRequest.size() < 1068)
-			FileRequest.push_back('\0');
 		
 		if(sendr(Client, FileRequest.c_str(), FileRequest.length(), 0) < 0)
 		{
@@ -314,6 +320,7 @@ void PeerToPeer::ParseInput()
 					OrigText[i] = '\0';
 			}
 		}
+
 	}
 	else	//Some special input... These input usually also send two more chars with it, which we don't want to interpret next loop (because they are alpha-numeric)
 	{
