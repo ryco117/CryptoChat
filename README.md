@@ -16,7 +16,7 @@ Arguments List
 
 -m	--manual		WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging
 
--dp	--disable-public	don't send our public key at connection. WARNING! peer must use -lp and have our public key\
+-dp	--disable-public	don't send our public key at connection. WARNING! peer must use -lp and have your public key
 
 -h	--help			print this dialogue
 
