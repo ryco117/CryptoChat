@@ -12,45 +12,45 @@ Arguments List
 
 **Toggles:**
 ```
--p	--print           //print all generated encryption values
+-p	--print            //print all generated encryption values
 
--m	--manual					//WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for       debugging
+-m	--manual					      //WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for       debugging
 
--dp	--disable-public	//don't send our public key at connection. WARNING! peer must use -lp and have your public key
+-dp	--disable-public	 //don't send our public key at connection. WARNING! peer must use -lp and have your public key
 
--h	--help						//print this dialogue
+-h	--help					   	    //print this dialogue
 ```
 **String Inputs:**
 ```
--ip	--ip-address			//specify the ip address to attempt to connect to
+-ip	--ip-address			   //specify the ip address to attempt to connect to
 
--o	--output					//save the rsa keys generated to files which can be reused
+-o	--output					      //save the rsa keys generated to files which can be reused
 
--sp,	--save-public		//save the peers public key to a specified file
+-sp,	--save-public		  //save the peers public key to a specified file
  
--lk	--load-keys				//specify the files to load rsa keys from (public and private) that we will use
+-lk	--load-keys				   //specify the files to load rsa keys from (public and private) that we will use
 
--lp	--load-public			//specify the file to load rsa public key from that the peer has the private key to
+-lp	--load-public			  //specify the file to load rsa public key from that the peer has the private key to
 ```
 
 **Integer Inputs:**
  ```
--P, --ports						//the port number to open and connect to
+-P, --ports						     //the port number to open and connect to
 ```
 
 **Input Argument Examples:**
 ```
--ip 192.168.1.70			//will attempt to connect to 192.168.1.70
+-ip 192.168.1.70			   //will attempt to connect to 192.168.1.70
 
--o newKeys						//will produce newKeys.pub and newKeys.priv
+-o newKeys						      //will produce newKeys.pub and newKeys.priv
 
--sp peerKey.pub				//will create the file peerKey.pub with the peer's rsa public key
+-sp peerKey.pub				   //will create the file peerKey.pub with the peer's rsa public key
 
--lk Keys							//will load the RSA values from the files Keys.pub and Keys.priv
+-lk Keys							       //will load the RSA values from the files Keys.pub and Keys.priv
 
--lp PeerKey.pub				//will load the peer's public key from PeerKey.pub
+-lp PeerKey.pub				   //will load the peer's public key from PeerKey.pub
 
--P 4321								//will open port number 4321 for this session, and will connect to the same number
+-P 4321								       //will open port number 4321 for this session, and will connect to the same number
 ```
 
 How To Build
