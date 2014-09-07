@@ -12,7 +12,7 @@ Arguments List
 
 **Toggles:**
 
--p	--print						print all generated encryption values
+-p	--print&nbsp;&nbsp;&nbsp;print all generated encryption values
 
 -m	--manual					WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging
 
