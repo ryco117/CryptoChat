@@ -26,7 +26,7 @@ Arguments List
 
 -o	--output			//save the rsa keys generated to files which can be reused
 
--sp --save-public	//save the peers public key to a specified file
+-sp --save-public	 //save the peers public key to a specified file
  
 -lk	--load-keys			//specify the files to load rsa keys from (public and private) that we will use
 
