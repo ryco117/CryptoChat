@@ -83,7 +83,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 
 			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt.c_str(), 16, 16384, 14, 2, (unsigned char*)Hash, 32);
 
-			//VERY IMPORTANT! Clear password from memory once it is no longer needed
+			//Clear password from memory once it is no longer needed
 			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
 			Passwd->clear();
 
@@ -114,6 +114,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 			{
 				cout << "Error: Incorrect password or format\n";
 				delete[] Cipher;
+				File.close();
 				return false;
 			}
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
@@ -126,6 +127,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 		{
 			cout << "Error: Incorrect password or format\n";
 			delete[] Cipher;
+			File.close();
 			return false;
 		}
 		try
@@ -136,6 +138,7 @@ bool LoadPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 		{
 			cout << "Could not load decryption value from " << FileLoc << endl;
 			delete[] Cipher;
+			File.close();
 			return false;
 		}
 		delete[] Cipher;
@@ -203,7 +206,7 @@ void MakePrivateKey(string FileLoc, mpz_class& Dec, string* Passwd, char* Salt, 
 			File.write(Base64Encode(Salt, 16).c_str(), 24);		//Write the salt in base64
 			File.write(Export64(IV).c_str(), 24);			//Write the IV in base64
 		}
-		File.write(Cipher.c_str(), Cipher.length());		//Write all the jibberish
+		File.write(Cipher.c_str(), Cipher.length());			//Write all the "jibberish"
 		File.close();
 	}
 	else

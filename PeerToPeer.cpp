@@ -122,7 +122,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					{
 						char TempVA[1060] = {'\0'};
 						string TempVS;
-						recvr(newSocket, TempVA, 1060, 0);
+						recv(newSocket, TempVA, 1060, 0);
 						TempVS = TempVA;
 						
 						try
@@ -152,11 +152,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 				}
 				else		//Data is on a new socket
 				{
-					char buf[1068] = {'\0'};	//1068 is the max possible incoming data (file part with iv and leading byte)
-					for(unsigned int j = 0; j < 1068; j++)
+					char buf[RECV_SIZE] = {'\0'};	//RECV_SIZE is the max possible incoming data (2048 byte file part with 24 byte iv and leading byte)
+					for(unsigned int j = 0; j < RECV_SIZE; j++)
 						buf[j] = '\0';
 					
-					if((nbytes = recvr(MySocks[i], buf, 1068, 0)) <= 0)		//handle data from a client
+					if((nbytes = recv(MySocks[i], buf, RECV_SIZE, 0)) <= 0)		//handle data from a client
 					{
 						// got error or connection closed by client
 						if(nbytes == 0)
@@ -201,25 +201,28 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					}
 					else
 					{
-						string Msg = "";	//1 char for type, varying extension info, actual main data
-											//0 = msg        , 22 chars for IV       , 512 message chars
-											//1 = file request, X chars for file length, Y chars for file loc.
-											//2 = request answer, 1 char for answer
-											//3 = file piece , 22 chars for IV		, 1024 bytes of file piece (or less)
+						string Msg = "";							//lead byte for data id | varying extension info		| main data
+																	//-----------------------------------------------------------------------------------------------------
+																	//0 = msg        	 	| IV64_LEN chars for IV			| 512 message chars (or less)
+																	//1 = file request	 	| X chars for file length		| Y chars for file loc.
+																	//2 = request answer 	| 1 char for answer				|
+																	//3 = file piece	 	| IV64_LEN chars for IV			| FILE_PIECE_LEN bytes of file piece (or less)
 						
-						for(unsigned int i = 0; i < 1068; i++)			//If we do a simple assign, the string will stop reading at a null terminator ('\0')
-							Msg.push_back(buf[i]);						//so manually push back all values in array buf...
+						for(unsigned int i = 0; i < nbytes; i++)	//If we do a simple assign, the string will stop reading at a null terminator ('\0')
+							Msg.push_back(buf[i]);					//so manually push back all values in array buf...
+						
 						if(Msg[0] == 0)
 						{
 							try
 							{
-								Import64(Msg.substr(1, 27), PeerIV);
+								Import64(Msg.substr(1, IV64_LEN), PeerIV);
 							}
 							catch(int e)
 							{
 								cout << "The received IV is bad\n";
 							}
-							Msg = Msg.substr(28, 512);
+
+							Msg = Msg.substr(IV64_LEN+1);
 							DropLine(Msg);
 							if(Sending == 0)
 								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
@@ -231,11 +234,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						else if(Msg[0] == 1)
 						{
 							Sending = -1;		//Receive file mode
-							Import64(Msg.substr(1, 27), PeerIV);
+							Import64(Msg.substr(1, IV64_LEN), PeerIV);
 							string PlainText;
 							try
 							{
-								PlainText = MyAES.Decrypt(SymKey, Msg.substr(28), PeerIV);
+								PlainText = MyAES.Decrypt(SymKey, Msg.substr(IV64_LEN+1), PeerIV);
 							}
 							catch(string e)
 							{
@@ -259,9 +262,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							string Accept = "xx";
 							Accept[0] = 2;
 							Accept[1] = c;
-							while(Accept.size() < 1068)
-								Accept.push_back('\0');
-							sendr(Client, Accept.c_str(), Accept.length(), 0);
+							send(Client, Accept.c_str(), Accept.length(), 0);
 							cout << "\nMessage: " << OrigText;
 						}
 						else if(Msg[0] == 2)
@@ -289,13 +290,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							try
 							{
-								Import64(Msg.substr(1, 27), FileIV);
+								Import64(Msg.substr(1, IV64_LEN), FileIV);
 							}
 							catch(int e)
 							{
 								cout << "Bad IV value when receiving file\n";
 							}
-							ReceiveFile(Msg.substr(28));
+							ReceiveFile(Msg.substr(IV64_LEN+1));
 						}
 					}
 				}
@@ -317,11 +318,9 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		if(SentStuff == 1 && ClientMod != 0 && ClientE != 0)		//We have established a connection and we have their keys!
 		{
 			string MyValues = Export64(MyRSA.BigEncrypt(ClientMod, ClientE, SymKey));	//Encrypt The Symmetric Key With Their Public Key, base 64
-			while(MyValues.size() < 1068)
-				MyValues.push_back('\0');
 			
 			//Send The Encrypted Symmetric Key
-			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
 			{
 				perror("Connect failure");
 				return -5;
@@ -351,11 +350,9 @@ void PeerToPeer::TryConnect(bool SendPublic)
 
 			TempValues = Export64(MyE);
 			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
-			while(MyValues.length() < 1060)
-				MyValues.push_back('\0');
 
 			//Send My Public Key And My Modulus Because We Started The Connection
-			if(sendr(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
 			{
 				perror("Connect failure");
 				return;

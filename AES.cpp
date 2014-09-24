@@ -145,7 +145,7 @@ void ByteSplit(mpz_class& Number, mat4 Matrices[2])
 {
 	mpz_class Temp;
 	mpz_class byteSplitter(255);
-	for(int i = 0; i < 32; i++)			//An overly complex-looking loop that just splits the 128 bit key into 16 bytes. Places each byte into 4x4 Matrix
+	for(int i = 0; i < 32; i++)			//An overly complex-looking loop that just splits the 256 bit key into 2 16 byte 4x4 Matricies
 	{
 		mpz_div_2exp(Temp.get_mpz_t(), Number.get_mpz_t(), (31-i)*8);
 		mpz_and(Temp.get_mpz_t(), Temp.get_mpz_t(), byteSplitter.get_mpz_t());

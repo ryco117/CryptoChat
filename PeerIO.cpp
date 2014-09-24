@@ -4,8 +4,6 @@
 #include "KeyManager.h"
 #include "base64.h"
 
-int sendr(int socket, const char* buffer, int length, int flags);
-int recvr(int socket, char* buffer, int length, int flags);
 string GetName(string file);
 
 void PeerToPeer::SendFilePt1()
@@ -24,16 +22,15 @@ void PeerToPeer::SendFilePt1()
 
 		mpz_class IV = RNG->get_z_bits(128);
 		string EncName = ss.str() + "X" + FileRequest;
-		while(EncName.size() < 1024)
-			EncName.push_back('\0');
 		EncName = MyAES.Encrypt(SymKey, EncName, IV);
 		string IVStr = Export64(IV);
-		while(IVStr.size() < 27)
+		while(IVStr.size() < IV64_LEN)
 			IVStr.push_back('\0');
+		
 		FileRequest = "x" + IVStr + EncName;
 		FileRequest[0] = 1;
 		
-		if(sendr(Client, FileRequest.c_str(), FileRequest.length(), 0) < 0)
+		if(send(Client, FileRequest.c_str(), FileRequest.length(), 0) < 0)
 		{
 			perror("File request failure");
 			return;
@@ -66,8 +63,8 @@ void PeerToPeer::SendFilePt2()
 		unsigned int FileLeft = 0;
 		File.seekg(0, File.end);
 		FileLeft = File.tellg() - FilePos;
-		if(FileLeft > 1024)
-			FileLeft = 1024;
+		if(FileLeft >= FILE_PIECE_LEN)
+			FileLeft = FILE_PIECE_LEN;
 		else
 		{
 			Sending = 0;	//file is done after this
@@ -77,21 +74,18 @@ void PeerToPeer::SendFilePt2()
 			cout << "\rFinished sending " << FileToSend << ", " << (FilePos + FileLeft) << " bytes were sent";
 			cout << "\nMessage: ";
 		}
-		char* buffer = new char[1024];
-		for(int i = 0; i < 1024; i++)
-			buffer[i] = 0;
-		
+		char* buffer = new char[FileLeft];
 		File.seekg(FilePos, File.beg);
 		File.read(buffer, FileLeft);
 		FilePos += FileLeft;
 		
 		string Data;
-		for(int i = 0; i < 1024; i++)
+		for(int i = 0; i < FileLeft; i++)
 			Data.push_back(buffer[i]);
 		
 		mpz_class IV = RNG->get_z_bits(128);
 		string SIV = Export64(IV);
-		while(SIV.size() < 27)
+		while(SIV.size() < IV64_LEN)
 			SIV.push_back('\0');
 		
 		string Final = "x";
@@ -99,7 +93,7 @@ void PeerToPeer::SendFilePt2()
 		Final += MyAES.Encrypt(SymKey, Data, IV);
 		Final[0] = 3;
 		
-		int n = sendr(Client, Final.c_str(), Final.length(), 0);
+		int n = send(Client, Final.c_str(), Final.length(), 0);
 		if(n == -1)
 		{
 			perror("\nSendFilePt2");
@@ -117,7 +111,7 @@ void PeerToPeer::ReceiveFile(string Msg)
 	fstream File(FileLoc.c_str(), ios::out | ios::app | ios::binary);
 	if(File.is_open())
 	{
-		if(BytesRead + 1024 >= FileLength)
+		if(BytesRead + FILE_PIECE_LEN >= FileLength)
 		{
 			Sending = 0;
 			cout << "\r";
@@ -127,11 +121,24 @@ void PeerToPeer::ReceiveFile(string Msg)
 			cout << "\nMessage: " << OrigText;
 		}
 		
-		int len = 1024;
+		int len = FILE_PIECE_LEN;
 		if(Sending == 0)
 			len = FileLength - BytesRead;
-		File.write(MyAES.Decrypt(SymKey, Msg, FileIV).c_str(), len);
-		BytesRead += 1024;
+		
+	
+		try
+		{
+			File.write(MyAES.Decrypt(SymKey, Msg, FileIV).c_str(), len);
+		}
+		catch(string s)
+		{
+			cout << s << endl;
+			
+			ContinueLoop = false;
+			File.close();
+			return;
+		}
+		BytesRead += FILE_PIECE_LEN;
 		File.close();
 	}
 	else
@@ -152,19 +159,8 @@ void PeerToPeer::DropLine(string pBuffer)
 	for(int j = 0; j < currntLength + 15; j++)
 		cout << " ";
 	cout << "\r";
-
-	//We pushed back all values in the 1024 byte large array buf, but the message may have been shorter than that, so...
-	int i = pBuffer.length() - 1;	//before decrypting, check how many null terminators are part of the cipher text vs were added to the back from buf, but weren't recieved
-	for(; i >= 0; i--)	//This is done by iterating from the back of the buffer, looking for where the first non zero value is
-	{
-		if(pBuffer[i] != '\0')
-			break;
-	}
-	while((i+1) % 16 != 0)		//Then increasing the position until it is a multiple of 16 (because AES uses blocks of 16 bytes)
-		i++;
-	pBuffer.erase(i+1);	//Erase Any null terminators that we don't want to decrypt, trailing zeros, from i to the end of the string
-	string print = MyAES.Decrypt(SymKey, pBuffer, PeerIV);
 	
+	string print = MyAES.Decrypt(SymKey, pBuffer, PeerIV);
 	cout << "Client: " << print.c_str();		//Print What we received
 	return;
 }
@@ -177,9 +173,7 @@ void PeerToPeer::SendMessage()
 	cout << "\r";
 	
 	cout << "Me: " << OrigText << endl;		//print "me: " then the message
-	while(CipherMsg.size() < 1068)
-		CipherMsg.push_back('\0');
-	sendr(Client, CipherMsg.c_str(), CipherMsg.length(), 0);	//send the client the encrypted message
+	send(Client, CipherMsg.c_str(), CipherMsg.length(), 0);	//send the client the encrypted message
 
 	for(int i = 0; i < 512; i++)	//clear the original text buffer
 		OrigText[i] = '\0';
@@ -238,8 +232,9 @@ void PeerToPeer::ParseInput()
 			{
 				IV = RNG->get_z_bits(128);
 				CipherMsg = "x" + Export64(IV);
-				while(CipherMsg.size() < 28)
+				while(CipherMsg.size() < IV64_LEN+1)
 					CipherMsg.push_back('\0');
+				
 				CipherMsg[0] = 0;
 				CipherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 				SendMessage();
@@ -303,8 +298,9 @@ void PeerToPeer::ParseInput()
 				TempValues = OrigText;
 				IV = RNG->get_z_bits(128);
 				CipherMsg = "x" + Export64(IV);
-				while(CipherMsg.size() < 28)
+				while(CipherMsg.size() < IV64_LEN + 1)
 					CipherMsg.push_back('\0');
+				
 				CipherMsg[0] = 0;
 				CipherMsg += MyAES.Encrypt(SymKey, TempValues, IV);
 				SendMessage();
@@ -328,32 +324,6 @@ void PeerToPeer::ParseInput()
 		getch();
 	}
 	return;
-}
-
-int recvr(int socket, char* buffer, int  length, int flags)
-{
-	int i = 0;
-	while(i < length)
-	{
-		int n = recv(socket, &buffer[i], length-i, flags);
-		if(n <= 0)
-			return n;
-		i += n;
-	}
-	return i;
-}
-
-int sendr(int socket, const char* buffer, int length, int flags)
-{
-	int i = 0;
-	while(i < length)
-	{
-		int n = send(socket, &buffer[i], length-i, flags);
-		if(n <= 0)
-			return n;
-		i += n;
-	}
-	return i;
 }
 
 string GetName(string file)

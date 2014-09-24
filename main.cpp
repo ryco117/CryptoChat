@@ -4,6 +4,10 @@
 #include <ifaddrs.h>
 #endif
 
+#define IV64_LEN 25
+#define FILE_PIECE_LEN 2048
+#define RECV_SIZE (1 + IV64_LEN + FILE_PIECE_LEN + 16)
+
 #include "PeerToPeer.cpp"
 #include "myconio.h"
 #include "KeyManager.h"
@@ -289,6 +293,7 @@ void PrintIP()
 	struct ifaddrs *addrs, *tmp;
 	getifaddrs(&addrs);
 	tmp = addrs;
+
 
 	while (tmp) 
 	{
