@@ -62,7 +62,7 @@ void PeerToPeer::SendFilePt2()
 	{
 		unsigned int FileLeft = 0;
 		File.seekg(0, File.end);
-		FileLeft = File.tellg() - FilePos;
+		FileLeft = (unsigned int)File.tellg() - FilePos;
 		if(FileLeft >= FILE_PIECE_LEN)
 			FileLeft = FILE_PIECE_LEN;
 		else
@@ -111,7 +111,21 @@ void PeerToPeer::ReceiveFile(string Msg)
 	fstream File(FileLoc.c_str(), ios::out | ios::app | ios::binary);
 	if(File.is_open())
 	{
-		if(BytesRead + FILE_PIECE_LEN >= FileLength)
+		try
+		{
+			Msg = MyAES.Decrypt(SymKey, Msg, FileIV);
+			File.write(Msg.c_str(), Msg.size());
+			BytesRead += Msg.size();
+		}
+		catch(string s)
+		{
+			cout << s << endl;
+			Sending = 0;
+			File.close();
+			return;
+		}
+
+		if(BytesRead == FileLength)
 		{
 			Sending = 0;
 			cout << "\r";
@@ -120,25 +134,6 @@ void PeerToPeer::ReceiveFile(string Msg)
 			cout << "\rFinished saving " << FileLoc << ", " << FileLength << " bytes";
 			cout << "\nMessage: " << OrigText;
 		}
-		
-		int len = FILE_PIECE_LEN;
-		if(Sending == 0)
-			len = FileLength - BytesRead;
-		
-	
-		try
-		{
-			File.write(MyAES.Decrypt(SymKey, Msg, FileIV).c_str(), len);
-		}
-		catch(string s)
-		{
-			cout << s << endl;
-			
-			ContinueLoop = false;
-			File.close();
-			return;
-		}
-		BytesRead += FILE_PIECE_LEN;
 		File.close();
 	}
 	else

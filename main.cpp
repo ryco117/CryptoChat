@@ -4,7 +4,7 @@
 #include <ifaddrs.h>
 #endif
 
-#define IV64_LEN 25
+#define IV64_LEN 24
 #define FILE_PIECE_LEN 2048
 #define RECV_SIZE (1 + IV64_LEN + FILE_PIECE_LEN + 16)
 

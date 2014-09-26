@@ -117,13 +117,14 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							break;
 						}
 					}
-					
 					if(ClientMod == 0)		//Check if we haven't already assigned the client's public key through an arg.
 					{
-						char TempVA[1060] = {'\0'};
+						char* TempVA = new char[6000];
 						string TempVS;
-						recv(newSocket, TempVA, 1060, 0);
-						TempVS = TempVA;
+						nbytes = recv(newSocket, TempVA, 6000, 0);
+						
+						for(unsigned int i = 0; i < nbytes; i++)
+							TempVS.push_back(TempVA[i]);
 						
 						try
 						{
@@ -148,6 +149,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						}
 						if(!SavePublic.empty())		//If we set the string for where to save their public key...
 							MakePublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
+						
+						delete[] TempVA;
 					}
 				}
 				else		//Data is on a new socket
@@ -201,12 +204,12 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					}
 					else
 					{
-						string Msg = "";							//lead byte for data id | varying extension info		| main data
-																	//-----------------------------------------------------------------------------------------------------
-																	//0 = msg        	 	| IV64_LEN chars for IV			| 512 message chars (or less)
-																	//1 = file request	 	| X chars for file length		| Y chars for file loc.
-																	//2 = request answer 	| 1 char for answer				|
-																	//3 = file piece	 	| IV64_LEN chars for IV			| FILE_PIECE_LEN bytes of file piece (or less)
+						string Msg = "";				//lead byte for data id | varying extension info		| main data
+														//-----------------------------------------------------------------------------------------------------
+														//0 = msg        	 	| IV64_LEN chars for IV			| 512 message chars (or less)
+														//1 = file request	 	| X chars for file length		| Y chars for file loc.
+														//2 = request answer 	| 1 char for answer				|
+														//3 = file piece	 	| IV64_LEN chars for IV			| FILE_PIECE_LEN bytes of file piece (or less)
 						
 						for(unsigned int i = 0; i < nbytes; i++)	//If we do a simple assign, the string will stop reading at a null terminator ('\0')
 							Msg.push_back(buf[i]);					//so manually push back all values in array buf...
