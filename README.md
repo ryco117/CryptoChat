@@ -1,11 +1,12 @@
 CryptoSending
 =============
 
-A Secure Terminal Based Chat Program That Uses 4096 bit RSA keys to exchange a 256 bit AES key,
-which is used for the rest of the chat. It uses GMP for it's large number arithmetic. The public
-and private keys generated can be stored to files to be reused. The private key may be encrypted
+A secure terminal based chat program that uses 4096 bit RSA keys (and soon ECDH) to exchange a
+256 bit AES key,which is used for the rest of the chat. It uses GMP for it's large number arithmetic. 
+The publicand private keys generated can be stored to files to be reused. The private key may be encrypted
 with 256 bit AES using a randomly generated IV and a key derived from a password using scrypt with
-a random salt. Enjoy top-notch, uber-level secure chats (most often about security ;) )....
+a random salt. Enjoy top-notch, uber-level secure chats (most often about security, you know it's
+true :P ).
 
 Arguments List
 --------------
