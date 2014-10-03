@@ -1,9 +1,9 @@
 CryptoSending
 =============
 
-A secure terminal based chat program that uses 4096 bit RSA keys (and soon ECDH) to exchange a
-256 bit AES key,which is used for the rest of the chat. It uses GMP for it's large number arithmetic. 
-The publicand private keys generated can be stored to files to be reused. The private key may be encrypted
+A secure, terminal based chat program that uses 4096 bit RSA keys (and, soon, ECDH) to exchange a
+256 bit AES key, which is used for the rest of the chat. It uses GMP for it's large number arithmetic. 
+The public and private keys generated can be stored to files to be reused. The private key may be encrypted
 with 256 bit AES using a randomly generated IV and a key derived from a password using scrypt with
 a random salt. Enjoy top-notch, uber-level secure chats (most often about security, you know it's
 true :P ).
@@ -14,8 +14,8 @@ Arguments List
 **Toggles:**
 ```
 -p	--print				//print all generated encryption values
--m	--manual			//WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for  debugging
--dp	--disable-public	//don't send our public key at connection. WARNING! peer must use -lp and have your public key
+-m	--manual			//WARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging
+-dp	--disable-public	//don't send your public key at connection. WARNING! peer must use -lp and have your public key
 -h	--help				//print this dialogue
 ```
 **String Inputs:**
