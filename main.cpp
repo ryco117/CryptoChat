@@ -4,10 +4,13 @@
 #include <ifaddrs.h>
 #endif
 
-#define IV64_LEN 24
-#define FILE_PIECE_LEN 2048
-#define RECV_SIZE (1 + IV64_LEN + FILE_PIECE_LEN + 16)
+#define IV64_LEN 24											//The max length an IV for AES could be (in base64)
+#define FILE_PIECE_LEN 2048									//The size in bytes of the blocks used for file sending
+#define RECV_SIZE (1 + IV64_LEN + FILE_PIECE_LEN + 16)		//Max size that a message could possibly be in bytes after initial setup
+#define MAX_RSA_SIZE 4097									//Max size in bytes that the public key when sent will fill (this is for 16384 bit RSA)
 
+#include "curve25519-donna.c"
+#include "ecdh.h"
 #include "PeerToPeer.cpp"
 #include "myconio.h"
 #include "KeyManager.h"
@@ -26,6 +29,7 @@ Toggles:\n\
 -p,\t--print\t\t\tprint all generated encryption values\n\
 -m,\t--manual\t\tWARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging\n\
 -dp,\t--disable-public\tdon't send our public key at connection. WARNING! peer must use -lp and have our public key\n\
+-r,\t--rsa\t\t\tuse RSA instead of Curve25519 ECC\n\
 -h,\t--help\t\t\tprint this dialogue\n\n\
 String Inputs:\n\
 -ip,\t--ip-address\t\tspecify the ip address to attempt to connect to\n\
@@ -47,27 +51,34 @@ int main(int argc, char* argv[])
 {
 	//This will be used for all randomness for the rest of the execution... seed well
 	gmp_randclass rng(gmp_randinit_default);		//Define a gmp_randclass, initialize with default value
-	GMPSeed(rng);						//Pass randclass to function to seed it for more random values
+	GMPSeed(rng);									//Pass randclass to function to seed it for more random values
 	
 	PeerToPeer MyPTP;
+	MyPTP.RNG = &rng;
 	MyPTP.Port = 5001;
 	MyPTP.ClientMod = 0;
 	MyPTP.ClientE = 0;
 	MyPTP.Sending = 0;
+	MyPTP.HasPub = false;
 	
+	//Encryption Stuff
 	RSA NewRSA;
 	AES Cipher;
-	mpz_class SymmetricKey = rng.get_z_bits(256);		//Create a 128 bit long random value as our key
+	mpz_class SymmetricKey = rng.get_z_bits(256);	//Create a 128 bit long random value as our key
 	mpz_class Keys[2] = {0};
 	mpz_class Mod = 0;
 	
+	//Options
 	bool PrintVals = false;
 	bool ForceRand = true;
 	bool SendPublic = true;
+	bool UseRSA = false;							//Use RSA for asymmetric instead of ECC Curve25519
+	string LoadPublic = "";
+	string LoadKeys = "";
 	string SavePublic = "";
 	string OutputFiles = "";
 	
-	for(unsigned int i = 1; i < argc; i++)		//What arguments were we provided with? How should we handle them
+	for(unsigned int i = 1; i < argc; i++)			//What arguments were we provided with? How should we handle them
 	{
 		string Arg = string(argv[i]);
 		if(Arg == "-p" || Arg == "--print")
@@ -84,40 +95,21 @@ int main(int argc, char* argv[])
 			}
 			i++;
 		}
+		else if(Arg == "-r" || Arg == "--rsa")
+			UseRSA = true;
 		else if((Arg == "-o" || Arg == "--output") && i+1 < argc)	//Write two keys files
 		{
 			OutputFiles = argv[i+1];
 			i++;
 		}
-		else if((Arg == "-lk" || Arg == "--load-keys") && i+1 < argc)	//load the public and private keys we will use
+		else if((Arg == "-lk" || Arg == "--load-keys") && i+1 < argc)		//load the public and private keys we will use
 		{
-			string PubKeyName = string(argv[i+1]) + ".pub";
-			string PrivKeyName = string(argv[i+1]) + ".priv";
-			cout << "Private Key Password: ";
-			fflush(stdout);
-			
-			string Passwd = GetPassword();
-			if(!LoadPrivateKey(PrivKeyName, Keys[1], &Passwd))
-			{
-				Keys[1] = 0;
-				return -1;
-			}
-			if(!LoadPublicKey(PubKeyName, Mod, Keys[0]))
-			{
-				Mod = 0;
-				Keys[0] = 0;
-				Keys[1] = 0;
-				return -1;
-			}
+			LoadKeys = argv[i+1];
 			i++;
 		}
-		else if((Arg == "-lp" || Arg == "--load-public") && i+1 < argc)	//load the public key that the peer can decrypt
+		else if((Arg == "-lp" || Arg == "--load-public") && i+1 < argc)		//load the peer's public key
 		{
-			if(!LoadPublicKey(argv[i+1], MyPTP.ClientMod, MyPTP.ClientE))
-			{
-				MyPTP.ClientMod = 0;
-				MyPTP.ClientE = 0;
-			}
+			LoadPublic = argv[i+1];
 			i++;
 		}
 		else if((Arg == "-P" || Arg == "--port") && i+1 < argc)
@@ -149,13 +141,76 @@ int main(int argc, char* argv[])
 	PrintIP();
 	#endif
 
+	if(!LoadPublic.empty())
+	{
+		if(UseRSA)
+		{
+			if(!LoadRSAPublicKey(LoadPublic, MyPTP.ClientMod, MyPTP.ClientE))
+			{
+				MyPTP.ClientMod = 0;
+				MyPTP.ClientE = 0;
+			}
+			else
+				MyPTP.HasPub = true;
+		}
+		else
+		{
+			if(!LoadCurvePublicKey(LoadPublic, MyPTP.CurvePPeer))
+				memset((char*)MyPTP.CurvePPeer, 0, 32);
+			else
+				MyPTP.HasPub = true;			
+		}
+	}
+	if(!LoadKeys.empty())
+	{
+		string PubKeyName = LoadKeys + ".pub";
+		string PrivKeyName = LoadKeys + ".priv";
+		cout << "Private Key Password: ";
+		fflush(stdout);
+		
+		string Passwd = GetPassword();
+		if(UseRSA)
+		{
+			if(!LoadRSAPrivateKey(PrivKeyName, Keys[1], &Passwd))
+			{
+				Keys[1] = 0;
+				return -1;
+			}
+			if(!LoadRSAPublicKey(PubKeyName, Mod, Keys[0]))
+			{
+				Mod = 0;
+				Keys[0] = 0;
+				Keys[1] = 0;
+				return -1;
+			}
+		}
+		else
+		{
+			if(!LoadCurvePrivateKey(PrivKeyName, MyPTP.CurveK, &Passwd))
+			{
+				memset((char*)MyPTP.CurveK, 0, 32);
+				return -1;
+			}
+			if(!LoadCurvePublicKey(PubKeyName, MyPTP.CurveP))
+			{
+				memset((char*)MyPTP.CurveK, 0, 32);
+				memset((char*)MyPTP.CurveP, 0, 32);
+				return -1;
+			}
+		}
+	}
+
 	if(PrintVals)
 		cout <<"Symmetric Key: 0x" << SymmetricKey.get_str(16) << "\n\n";
 	
-	GMPSeed(rng);		//Reseed for more secure random goodness
-	if(Mod == 0)		//If one is not set, they all must be set (And if one has a set value, they all must)
-		NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
-		
+	if(LoadKeys.empty())
+	{
+		if(UseRSA)
+			NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
+		else
+			ECC_Curve25519_Create(MyPTP.CurveP, MyPTP.CurveK, rng);
+	}
+
 	if(!OutputFiles.empty())		//So, we want to output the generated keys
 	{
 		string PubKeyName = OutputFiles + ".pub";
@@ -195,8 +250,16 @@ int main(int argc, char* argv[])
 					cout << "IV: " << TempIV.get_str(16) << endl;
 				}
 
-				MakePrivateKey(PrivKeyName, Keys[1], &Passwd1, SaltStr, TempIV);
-				MakePublicKey(PubKeyName, Mod, Keys[0]);
+				if(UseRSA)
+				{
+					MakeRSAPrivateKey(PrivKeyName, Keys[1], &Passwd1, SaltStr, TempIV);
+					MakeRSAPublicKey(PubKeyName, Mod, Keys[0]);
+				}
+				else
+				{
+					MakeCurvePrivateKey(PrivKeyName, MyPTP.CurveK, &Passwd1, SaltStr, TempIV);
+					MakeCurvePublicKey(PubKeyName, MyPTP.CurveP);
+				}
 				break;
 			}
 		}
@@ -207,20 +270,14 @@ int main(int argc, char* argv[])
 	MyPTP.MyE = Keys[0];
 	MyPTP.MyD = Keys[1];
 	MyPTP.SymKey = SymmetricKey;
-	GMPSeed(rng);
-	MyPTP.RNG = &rng;
+	MyPTP.UseRSA = UseRSA;
 
-	if(MyPTP.StartServer(1, SendPublic, SavePublic) != 0)			//Jump to the loop to handle all incoming connections and data sending
-	{
-		nonblock(false, true);
-		cout << "Finished cleaning, Press Enter To Exit...";
-		cin.get();
-		return 0;
-	}
+	MyPTP.StartServer(1, SendPublic, SavePublic);				//Jump to the loop to handle all incoming connections and data sending
 	
 	nonblock(false, true);
 	cout << "Finished cleaning, Press Enter To Exit...";
 	cin.get();
+
 	return 0;
 }
 
@@ -293,7 +350,6 @@ void PrintIP()
 	struct ifaddrs *addrs, *tmp;
 	getifaddrs(&addrs);
 	tmp = addrs;
-
 
 	while (tmp) 
 	{

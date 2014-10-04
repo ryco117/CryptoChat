@@ -40,31 +40,31 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	}
 	
 	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);			//assign Client to a file descriptor (socket) that uses IP addresses, TCP
-	memset(&socketInfo, 0, sizeof(socketInfo));				//Clear socketInfo to be filled with client stuff
-	socketInfo.sin_family = AF_INET;					//uses IP addresses
-	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());			//connects to the ip we specified
-	socketInfo.sin_port = htons(Port);					//uses port Port
+	memset(&socketInfo, 0, sizeof(socketInfo));					//Clear socketInfo to be filled with client stuff
+	socketInfo.sin_family = AF_INET;							//uses IP addresses
+	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
+	socketInfo.sin_port = htons(Port);							//uses port Port
 	
 	//		**-FILE DESCRIPTORS-**
-	FD_ZERO(&master);							//clear data in master
-	FD_SET(Serv, &master);							//set master to check file descriptor Serv
-	read_fds = master;							//the read_fds will check the same FDs as master
+	FD_ZERO(&master);											//clear data in master
+	FD_SET(Serv, &master);										//set master to check file descriptor Serv
+	read_fds = master;											//the read_fds will check the same FDs as master
 	
-	MySocks = new int[MAX_CLIENTS + 1];					//MySocks is a new array of sockets (ints) as long the max connections + 1
-	MySocks[0] = Serv;							//first socket is the server FD
+	MySocks = new int[MAX_CLIENTS + 1];							//MySocks is a new array of sockets (ints) as long the max connections + 1
+	MySocks[0] = Serv;											//first socket is the server FD
 	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)			//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
 		MySocks[i] = -1;
-	timeval zero = {0, 50};							//called zero for legacy reasons... assign timeval 50 milliseconds
-	fdmax = Serv;								//fdmax is the highest file descriptor to check (because they are just ints)
+	timeval zero = {0, 50};										//called zero for legacy reasons... assign timeval 50 milliseconds
+	fdmax = Serv;												//fdmax is the highest file descriptor to check (because they are just ints)
 	
 	//Progress checks
 	SentStuff = 0;
-	GConnected = false;							//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
+	GConnected = false;											//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
 	ConnectedClnt = false;
 	ConnectedSrvr = false;
 	ContinueLoop = true;
 	
-	nonblock(true, false);							//nonblocking input, disable echo
+	nonblock(true, false);										//nonblocking input, disable echo
 	while(ContinueLoop)
 	{
 		if(!GConnected && ConnectedClnt && ConnectedSrvr && SentStuff == 3)	//All values have been sent, then set, but we haven't begun! Start already!
@@ -79,7 +79,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			cout << "Message: ";
 		}
 		
-		read_fds = master;						//assign read_fds back to the unchanged master
+		read_fds = master;											//assign read_fds back to the unchanged master
 		if(select(fdmax+1, &read_fds, NULL, NULL, &zero) == -1)		//Check for stuff to read on sockets, up to fdmax+1.. stop check after timeval zero (50ms)
 		{
 			cout << "\r";
@@ -90,38 +90,38 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			perror("Select");
 			return -3;
 		}
-		for(unsigned int i = 0; i < MAX_CLIENTS + 1; i++)		//Look through all sockets
+		for(unsigned int i = 0; i < MAX_CLIENTS + 1; i++)			//Look through all sockets
 		{
-			if(MySocks[i] == -1)					//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
+			if(MySocks[i] == -1)		//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
 				continue;
-			if(FD_ISSET(MySocks[i], &read_fds))			//check read_fds to see if there is unread data in MySocks[i]
+			if(FD_ISSET(MySocks[i], &read_fds))						//check read_fds to see if there is unread data in MySocks[i]
 			{
-				if(i == 0)		//if i = 0, then based on line 52, we know that we are looking at data on the Serv socket... This means a new connection!!
+				if(i == 0)		//if i = 0, then based on line 54, we know that we are looking at data on the Serv socket... This means a new connection!!
 				{
-					if((newSocket = accept(Serv, NULL, NULL)) < 0)		//assign socket newSocket to the person we are accepting on Serv
+					if((newSocket = accept(Serv, NULL, NULL)) < 0)	//assign socket newSocket to the person we are accepting on Serv
 					{
-						close(Serv);				//unless it errors
+						close(Serv);								//...unless it errors
 						perror("Accept");
 						return -4;
 					}
-					ConnectedSrvr = true;		//Passed All Tests, We Can Safely Say We Connected
+					ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
 					
-					FD_SET(newSocket, &master); // add the newSocket FD to master set
+					FD_SET(newSocket, &master); 					// add the newSocket FD to master set
 					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)	//assign an unassigned MySocks to newSocket
 					{
 						if(MySocks[j] == -1) 	//Not in use
 						{
 							MySocks[j] = newSocket;
-							if(newSocket > fdmax)		//if the new file descriptor is greater than fdmax..
-								fdmax = newSocket;	//change fdmax to newSocket
+							if(newSocket > fdmax)					//if the new file descriptor is greater than fdmax..
+								fdmax = newSocket;					//change fdmax to newSocket
 							break;
 						}
 					}
-					if(ClientMod == 0)		//Check if we haven't already assigned the client's public key through an arg.
+					if(UseRSA && !HasPub)					//Check if we haven't already assigned the client's public key through an arg.
 					{
-						char* TempVA = new char[6000];
+						char* TempVA = new char[MAX_RSA_SIZE];
 						string TempVS;
-						nbytes = recv(newSocket, TempVA, 6000, 0);
+						nbytes = recv(newSocket, TempVA, MAX_RSA_SIZE, 0);
 						
 						for(unsigned int i = 0; i < nbytes; i++)
 							TempVS.push_back(TempVA[i]);
@@ -148,10 +148,27 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							return -1;
 						}
 						if(!SavePublic.empty())		//If we set the string for where to save their public key...
-							MakePublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
+							MakeRSAPublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
 						
 						delete[] TempVA;
 					}
+					else if(!UseRSA)
+					{
+						if(!HasPub)
+						{
+							nbytes = recv(newSocket, CurvePPeer, 32, 0);
+							if(!SavePublic.empty())
+								MakeCurvePublicKey(SavePublic, CurvePPeer);
+						}
+						
+						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
+						unsigned char Hash[32] = {0};
+
+						curve25519_donna(SharedKey, CurveK, CurvePPeer);						
+						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 14, 2, Hash, 32);		//Use agreed upon salt
+						mpz_import(SymKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
+					}
+					HasPub = true;
 				}
 				else		//Data is on a new socket
 				{
@@ -182,7 +199,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						FD_CLR(MySocks[i], &master); // remove from master set
 						ContinueLoop = false;
 					}
-					else if(SentStuff == 2)		//if SentStuff == 2, then we still need the symmetric key
+					else if(SentStuff == 2 && UseRSA)						//if SentStuff == 2, then we still need the symmetric key (should only get here if RSA)
 					{
 						string ClntKey = buf;
 						mpz_class TempKey;
@@ -194,12 +211,12 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							cout << "The received symmetric key is bad\n";
 						}
-						SymKey += MyRSA.BigDecrypt(MyMod, MyD, TempKey);		//They sent their sym key with our public key. Decrypt it!
+						SymKey += MyRSA.BigDecrypt(MyMod, MyD, TempKey);								//They sent their sym. key with our public key. Decrypt it!
 						
 						mpz_class LargestAllowed = 0;
 						mpz_class One = 1;
-						mpz_mul_2exp(LargestAllowed.get_mpz_t(), One.get_mpz_t(), 128);		//Largest allowed sym key is equal to (1 * 2^128)
-						SymKey %= LargestAllowed;		//Modulus by largest 128 bit value ensures within range after adding keys!
+						mpz_mul_2exp(LargestAllowed.get_mpz_t(), One.get_mpz_t(), 256);					//Largest allowed sym key is equal to (1 * 2^256) - 1
+						mpz_mod(SymKey.get_mpz_t(), SymKey.get_mpz_t(), LargestAllowed.get_mpz_t());	//Modulus by largest 256 bit value ensures within range after adding keys!
 						SentStuff = 3;
 					}
 					else
@@ -225,7 +242,15 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 								cout << "The received IV is bad\n";
 							}
 
-							Msg = Msg.substr(IV64_LEN+1);
+							try
+							{
+								Msg = Msg.substr(IV64_LEN+1);
+							}
+							catch(int e)
+							{
+								cout << "Bad message\n";
+							}
+
 							DropLine(Msg);
 							if(Sending == 0)
 								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
@@ -237,7 +262,15 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						else if(Msg[0] == 1)
 						{
 							Sending = -1;		//Receive file mode
-							Import64(Msg.substr(1, IV64_LEN), PeerIV);
+							try
+							{
+								Import64(Msg.substr(1, IV64_LEN), PeerIV);
+							}
+							catch(int e)
+							{
+								cout << "Bad IV\n";
+							}
+
 							string PlainText;
 							try
 							{
@@ -310,28 +343,34 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 			if(GConnected && Sending != 2)		//So nothing happens until we are ready...
 				ParseInput();
 			else
-				getch();		//And keypresses before hand arent read when we are.
+				getch();						//And keypresses before hand arent read when we are.
 		}
 		if(Sending == 3)
 			SendFilePt2();
-		if(!ConnectedClnt)		//Not conected yet?!?
+		if(!ConnectedClnt)						//Not conected yet?!?
 		{
-			TryConnect(SendPublic);		//Lets try to change that
+			TryConnect(SendPublic);				//Lets try to change that
 		}
-		if(SentStuff == 1 && ClientMod != 0 && ClientE != 0)		//We have established a connection and we have their keys!
+		if(SentStuff == 1 && HasPub)			//We have established a connection and we have their keys!
 		{
-			string MyValues = Export64(MyRSA.BigEncrypt(ClientMod, ClientE, SymKey));	//Encrypt The Symmetric Key With Their Public Key, base 64
-			
-			//Send The Encrypted Symmetric Key
-			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(UseRSA)
 			{
-				perror("Connect failure");
-				return -5;
+				string MyValues = Export64(MyRSA.BigEncrypt(ClientMod, ClientE, SymKey));	//Encrypt The Symmetric Key With Their Public Key, base 64
+			
+				//Send The Encrypted Symmetric Key
+				if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+				{
+					perror("Connect failure");
+					return -5;
+				}
+				SentStuff = 2;						//We have given them our symmetric key
 			}
-			SentStuff = 2;			//We have given them our symmetric key
+			else
+				SentStuff = 3;						//Have their public and they have ours... We're done setting up
 		}
-		fflush(stdout);		//Not always does cout print immediately, this forces it.
+		fflush(stdout);								//Not always does cout print immediately, this forces it.
 	}//End While Loop
+
 	cout << "\n";
 	close(Serv);
 	close(Client);
@@ -345,20 +384,31 @@ void PeerToPeer::TryConnect(bool SendPublic)
 		fprintf(stderr, "Connected!\n");
 		if(SendPublic)
 		{
-			string TempValues = "";
-			string MyValues = "";
-
-			TempValues = Export64(MyMod);		//Base64 will save digits
-			MyValues = TempValues + "|";		//Pipe char to seperate keys
-
-			TempValues = Export64(MyE);
-			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
-
-			//Send My Public Key And My Modulus Because We Started The Connection
-			if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+			if(UseRSA)
 			{
-				perror("Connect failure");
-				return;
+				string TempValues = "";
+				string MyValues = "";
+
+				TempValues = Export64(MyMod);		//Base64 will save digits
+				MyValues = TempValues + "|";		//Pipe char to seperate keys
+
+				TempValues = Export64(MyE);
+				MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
+
+				//Send My Public Key And My Modulus Because We Started The Connection
+				if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+				{
+					perror("Connect failure");
+					return;
+				}
+			}
+			else
+			{
+				if(send(Client, CurveP, 32, 0) < 0)
+				{
+					perror("Connect failure");
+					return;
+				}
 			}
 		}
 		SentStuff = 1;			//We have sent our keys

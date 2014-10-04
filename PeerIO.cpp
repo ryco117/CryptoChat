@@ -80,7 +80,7 @@ void PeerToPeer::SendFilePt2()
 		FilePos += FileLeft;
 		
 		string Data;
-		for(int i = 0; i < FileLeft; i++)
+		for(unsigned int i = 0; i < FileLeft; i++)
 			Data.push_back(buffer[i]);
 		
 		mpz_class IV = RNG->get_z_bits(128);

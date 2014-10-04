@@ -45,6 +45,9 @@
  * uses many of the tricks described therein. Only the crecip function is taken
  * from the sample implementation. */
 
+#ifndef CURVE25519_DONNA
+#define CURVE25519_DONNA
+
 #include <string.h>
 #include <stdint.h>
 
@@ -858,3 +861,4 @@ curve25519_donna(u8 *mypublic, const u8 *secret, const u8 *basepoint) {
   fcontract(mypublic, z);
   return 0;
 }
+#endif
