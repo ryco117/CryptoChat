@@ -1,5 +1,5 @@
-CryptoSending
-=============
+CryptoChat
+==========
 
 A secure, terminal based chat program that uses ECC Curve25519 or 4096 bit RSA keys to exchange a
 256 bit AES key, which is used for the rest of the chat. It uses GMP for it's large number arithmetic. 
