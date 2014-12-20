@@ -36,7 +36,7 @@ bool LoadCurvePublicKey(string FileLoc, uint8_t point[32])
 	return true;
 }
 
-bool LoadCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd)
+bool LoadCurvePrivateKey(string FileLoc, uint8_t Key[32], char* Passwd)
 {
 	fstream File(FileLoc.c_str(), ios::in);
 	if(File.is_open())
@@ -53,24 +53,20 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd)
 		FileLength = File.tellg();
 		File.seekg(0, File.beg);
 		
-		if(!Passwd->empty())
+		if(strlen(Passwd))
 		{
 			File.read(Salt64, 24);
-			string Salt = Base64Decode(string((const char*)Salt64, 24));
+			int SaltLen;								//Should equal 16
+			char* Salt = Base64Decode(Salt64, SaltLen);
 			File.read(IVStr, 24);
-			Import64(string((const char*)IVStr, 24), IV);
+			Import64(IVStr, IV);
 
-			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt.c_str(), 16, 16384, 14, 2, (unsigned char*)Hash, 32);
-
-			//Clear password from memory once it is no longer needed
-			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
-			Passwd->clear();
-
+			n = libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			delete[] Salt;
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
-			for(int i = 0; i < 32; i++)
-				Hash[i] = 0;
+			memset(Hash, 0, 32);
 		}
 
 		n = FileLength-File.tellg();
@@ -78,20 +74,19 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd)
 		File.read(Cipher, n);
 		
 		AES crypt;
-		string Original;
-		string SCipher = "";
-		for(int i = 0; i < n; i++)
-			SCipher.push_back(Cipher[i]);
+		char* Original = new char[n];
 
 		if(FinalKey != 0)
 		{
 			try
 			{
-				Original = crypt.Decrypt(FinalKey, SCipher, IV);
+				n = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
 			}
 			catch(string e)
 			{
 				cout << "Error: Incorrect password or format\n";
+				memset(Original, 0, n);
+				delete[] Original;
 				delete[] Cipher;
 				File.close();
 				return false;
@@ -99,18 +94,25 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd)
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
 		}
 		else
-			Original = SCipher;
+			Original = strcpy(Original, Cipher);
 		
-		int pos = Original.find('\n');
-		if(Original.substr(0, pos) != "crypto-key-ecc")		//Check for proper format
+		if(strncmp(Original, "crypto-key-ecc\n", 15) == 0)									//Check for proper format
 		{
 			cout << "Error: Incorrect password or format\n";
+			memset(Original, 0, n);
+			delete[] Original;
 			delete[] Cipher;
 			File.close();
 			return false;
 		}
 
-		strcpy((char*)mult, Original.substr(pos+1).c_str());
+		for(int i = 0; i < 32; i++)
+		{
+			Key[i] = Original[15 + i];
+			Original[15 + i] = 0;
+		}
+		
+		delete[] Original;
 		delete[] Cipher;
 		File.close();
 	}
@@ -122,13 +124,13 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd)
 	return true;
 }
 
-void MakeCurvePublicKey(string FileLoc, uint8_t point[32])
+void MakeCurvePublicKey(string FileLoc, uint8_t Point[32])
 {
 	fstream File(FileLoc.c_str(), ios::out | ios::trunc);
 	if(File.is_open())
 	{
 		File << "crypto-key-ecc\n";
-		File.write((char*)point, 32);
+		File.write((char*)Point, 32);
 		File.close();
 	}
 	else
@@ -136,48 +138,48 @@ void MakeCurvePublicKey(string FileLoc, uint8_t point[32])
 	return;
 }
 
-void MakeCurvePrivateKey(string FileLoc, uint8_t mult[32], string* Passwd, char* Salt, mpz_class& IV)
+void MakeCurvePrivateKey(string FileLoc, uint8_t Key[32], char* Passwd, char* Salt, mpz_class& IV)
 {
 	fstream File(FileLoc.c_str(), ios::out | ios::trunc);
 	if(File.is_open())
 	{
-		string Original = "crypto-key-ecc\n";
+		char Original[47] = {"crypto-key-ecc\n"};
 		char Hash[32] = {0};
 		mpz_class FinalKey = 0;
 		int n = 0;
 		
-		if(!Passwd->empty())
+		if(strlen(Passwd))
 		{
-			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
-
-			//VERY IMPORTANT! Clear password from memory once it is no longer needed		
-			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
-			Passwd->clear();
-
+			n = libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
-			for(int i = 0; i < 32; i++)
-				Hash[i] = 0;
+			memset(Hash, 0, 32);
 		}
 		
 		for(unsigned int i = 0; i < 32; i++)
-			Original.push_back((char)mult[i]);
+			Original[15 + i] = (char)Key[i];
 		
 		AES crypt;
-		string Cipher;
+		char* Cipher = new char[48];
 		if(FinalKey != 0)
-			Cipher = crypt.Encrypt(FinalKey, Original, IV);
+			crypt.Encrypt(Original, 47, IV, FinalKey, Cipher);
 		else
-			Cipher = Original;
+			Cipher = strcpy(Cipher, Original);
 
 		if(FinalKey != 0)
 		{
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our AES key
-			File.write(Base64Encode(Salt, 16).c_str(), 24);		//Write the salt in base64
-			File.write(Export64(IV).c_str(), 24);				//Write the IV in base64
+			char* S = Base64Encode(Salt, 16);
+			char* I = Export64(IV);
+			File.write(S, 24);																//Write the salt in base64
+			File.write(I, 24);																//Write the IV in base64
+			File.write(Cipher, 48);
+			delete[] S;
+			delete[] I;
 		}
-		File.write(Cipher.c_str(), Cipher.length());			//Write all the "jibberish"
+		else
+			File.write(Cipher, 47);
 		File.close();
 	}
 	else
@@ -194,7 +196,7 @@ bool LoadRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	{
 		string Values;
 		getline(File, Values);
-		if(Values != "crypto-key-rsa")		//Check for proper format
+		if(Values != "crypto-key-rsa")				//Check for proper format
 		{
 			cout << "This key was not saved in a recognized format.\n";
 			return false;
@@ -203,7 +205,7 @@ bool LoadRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 		getline(File, Values);
 		try
 		{
-			Import64(Values, Modulus);		//Decode Base64 Values and store into Modulus
+			Import64(Values.c_str(), Modulus);		//Decode Base64 Values and store into Modulus
 		}
 		catch(int e)
 		{
@@ -215,7 +217,7 @@ bool LoadRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 		getline(File, Values);
 		try
 		{
-			Import64(Values, Enc);		//Decode Base64 Values and store into Enc
+			Import64(Values.c_str(), Enc);			//Decode Base64 Values and store into Enc
 		}
 		catch(int e)
 		{
@@ -232,7 +234,7 @@ bool LoadRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	return true;
 }
 
-bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
+bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, char* Passwd)
 {
 	fstream File(FileLoc.c_str(), ios::in);
 	if(File.is_open())
@@ -249,24 +251,20 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 		FileLength = File.tellg();
 		File.seekg(0, File.beg);
 		
-		if(!Passwd->empty())
+		if(strlen(Passwd))
 		{
 			File.read(Salt64, 24);
-			string Salt = Base64Decode(string((const char*)Salt64, 24));
+			int SaltLen;
+			char* Salt = Base64Decode(Salt64, SaltLen);
 			File.read(IVStr, 24);
-			Import64(string((const char*)IVStr, 24), IV);
+			Import64(IVStr, IV);
 
-			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt.c_str(), 16, 16384, 14, 2, (unsigned char*)Hash, 32);
-
-			//Clear password from memory once it is no longer needed
-			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
-			Passwd->clear();
-
+			n = libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			delete[] Salt;
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
-			for(int i = 0; i < 32; i++)
-				Hash[i] = 0;
+			memset(Hash, 0, 32);
 		}
 
 		n = FileLength-File.tellg();
@@ -274,20 +272,19 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 		File.read(Cipher, n);
 		
 		AES crypt;
-		string Original;
-		string SCipher = "";
-		for(int i = 0; i < n; i++)
-			SCipher.push_back(Cipher[i]);
+		char* Original = new char[n];
 
 		if(FinalKey != 0)
 		{
 			try
 			{
-				Original = crypt.Decrypt(FinalKey, SCipher, IV);
+				n = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
 			}
 			catch(string e)
 			{
 				cout << "Error: Incorrect password or format\n";
+				memset(Original, 0, n);
+				delete[] Original;
 				delete[] Cipher;
 				File.close();
 				return false;
@@ -295,27 +292,32 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd)
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
 		}
 		else
-			Original = SCipher;
+			Original = strcpy(Original, Cipher);
 		
-		int pos = Original.find('\n');
-		if(Original.substr(0, pos) != "crypto-key-rsa")		//Check for proper format
+		if(strncmp(Original, "crypto-key-rsa\n", 15))		//Check for proper format
 		{
 			cout << "Error: Incorrect password or format\n";
+			memset(Original, 0, n);
+			delete[] Original;
 			delete[] Cipher;
 			File.close();
 			return false;
 		}
 		try
 		{
-			Import64(Original.substr(pos+1, string::npos), Dec);
+			Import64(&Original[15], Dec);
 		}
 		catch(int e)
 		{
 			cout << "Could not load decryption value from " << FileLoc << endl;
+			memset(Original, 0, n);
+			delete[] Original;
 			delete[] Cipher;
 			File.close();
 			return false;
 		}
+		memset(Original, 0, n);
+		delete[] Original;
 		delete[] Cipher;
 		File.close();
 	}
@@ -332,9 +334,13 @@ void MakeRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	fstream File(FileLoc.c_str(), ios::out | ios::trunc);
 	if(File.is_open())
 	{
+		char* ModStr = Export64(Modulus);
+		char* EncStr = Export64(Enc);
 		File << "crypto-key-rsa\n";
-		File << Export64(Modulus) << "\n";
-		File << Export64(Enc) << "\n";
+		File << ModStr << "\n";
+		File << EncStr << "\n";
+		delete[] ModStr;
+		delete[] EncStr;
 		File.close();
 	}
 	else
@@ -342,46 +348,64 @@ void MakeRSAPublicKey(string FileLoc, mpz_class& Modulus, mpz_class& Enc)
 	return;
 }
 
-void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, string* Passwd, char* Salt, mpz_class& IV)
+void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, char* Passwd, char* Salt, mpz_class& IV)
 {
 	fstream File(FileLoc.c_str(), ios::out | ios::trunc);
 	if(File.is_open())
 	{
-		string Original = "crypto-key-rsa\n";
+		char* Original;
 		char Hash[32] = {0};
 		mpz_class FinalKey = 0;
 		int n = 0;
 		
-		if(!Passwd->empty())
+		if(strlen(Passwd))
 		{
-			n = libscrypt_scrypt((const unsigned char*)Passwd->c_str(), Passwd->length(), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
-
-			//VERY IMPORTANT! Clear password from memory once it is no longer needed		
-			Passwd->replace(0, Passwd->length(), Passwd->length(), '\x0');
-			Passwd->clear();
-
+			n = libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
-			for(int i = 0; i < 32; i++)
-				Hash[i] = 0;
+			memset(Hash, 0, 32);
 		}
 		
-		Original += Export64(Dec);
+		char* Dec64 = Export64(Dec);
+		unsigned int Length = 15 + strlen(Dec64);
+		Original = new char[Length];
+		strncpy(Original, "crypto-key-rsa\n", 15);
+		strncpy(&Original[15], Dec64, strlen(Dec64));
+		memset(Dec64, 0, strlen(Dec64));
+		delete[] Dec64;
+		
 		AES crypt;
-		string Cipher;
+		char* Cipher;
 		if(FinalKey != 0)
-			Cipher = crypt.Encrypt(FinalKey, Original, IV);
+		{
+			Cipher = new char[Length + (16 - (Length % 16))];
+			crypt.Encrypt(Original, Length, IV, FinalKey, Cipher);
+		}
 		else
 			Cipher = Original;
 
 		if(FinalKey != 0)
 		{
+			char* S = Base64Encode(Salt, 16);
+			char* I = Export64(IV);
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
-			File.write(Base64Encode(Salt, 16).c_str(), 24);		//Write the salt in base64
-			File.write(Export64(IV).c_str(), 24);			//Write the IV in base64
+			File.write(S, 24);																//Write the salt in base64
+			File.write(I, 24);																//Write the IV in base64
+			delete[] S;
+			delete[] I;
+			File.write(Cipher, Length + (16 - (Length % 16)));
+			
+			memset(Original, 0, Length);
+			delete[] Cipher;
+			delete[] Original;
 		}
-		File.write(Cipher.c_str(), Cipher.length());			//Write all the "jibberish"
+		else
+		{
+			File.write(Cipher, Length);
+			delete[] Cipher;
+		}
+		
 		File.close();
 	}
 	else

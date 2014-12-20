@@ -1,6 +1,6 @@
 #ifndef BASE64_H
 #define BASE64_H
-#include <string>
+#include <string.h>
 #include <gmpxx.h>
 
 char BaseTable[] = {
@@ -14,13 +14,13 @@ char BaseTable[] = {
 '4', '5', '6', '7', '8', '9', '+', '/'
 };
 
-std::string Base64Encode(char* DataC, int len)
+char* Base64Encode(const char* DataC, int len)
 {
-	std::string Result;
+	char* Result;
 	int r = len % 3;
-	unsigned char* Data = new unsigned char[len + ((3-r)%3)];
-	for(int i = 0; i < len; i++)
-		Data[i] = DataC[i];
+	unsigned char* Data = new unsigned char[len + ((3 - r) % 3)];
+	memcpy(Data, DataC, len);
+	
 	if(r == 2)
 		Data[len] = '\0';
 	if(r == 1)
@@ -28,42 +28,45 @@ std::string Base64Encode(char* DataC, int len)
 		Data[len] = '\0';
 		Data[len+1] = '\0';
 	}
-	len += (3-r)%3;
+	unsigned int newLen = len + ((3 - r) % 3);
+	newLen = (newLen / 3) * 4;
+	Result = new char[newLen+1];
+	Result[newLen] = 0;
 	
 	unsigned int k = 0;
-	for(int i = 0; i < len; i += 3)
+	for(int i = 0; i < newLen / 4; i++)
 	{
-		k = (unsigned int)Data[i] << 16;
-		k += (unsigned int)Data[i+1] << 8;
-		k += (unsigned int)Data[i+2];
+		k = (unsigned int)Data[i * 3] << 16;
+		k += (unsigned int)Data[i * 3 + 1] << 8;
+		k += (unsigned int)Data[i * 3 + 2];
 		
-		Result.push_back(BaseTable[(k & 0xFC0000) >> 18]);
-		Result.push_back(BaseTable[(k & 0x3F000) >> 12]);
-		Result.push_back(BaseTable[(k & 0xFC0) >> 6]);
-		Result.push_back(BaseTable[k & 0x3F]);
+		Result[i * 4] = BaseTable[(k & 0xFC0000) >> 18];
+		Result[i * 4 + 1] = BaseTable[(k & 0x3F000) >> 12];
+		Result[i * 4 + 2] = BaseTable[(k & 0xFC0) >> 6];
+		Result[i * 4 + 3] = BaseTable[k & 0x3F];
 	}
 	
 	if(r == 2)
-		Result[Result.length()-1] = '=';
+		Result[newLen - 1] = '=';
 	if(r == 1)
 	{
-		Result[Result.length()-1] = '=';
-		Result[Result.length()-2] = '=';
+		Result[newLen - 1] = '=';
+		Result[newLen - 2] = '=';
 	}
-	
+	memset(Data, 0, len + ((3 - r) % 3));
 	delete[] Data;
 	return Result;
 }
 
-std::string Base64Decode(std::string Data)
+char* Base64Decode(const char* Data, int& len)
 {
-	std::string LookUp;
+	char* LookUp = new char[strlen(Data)];
 	char r = 0;
-	for(int i = 0; i < Data.length(); i++)
+	for(int i = 0; i < strlen(Data); i++)
 	{
 		if(Data[i] == '=')
 		{
-			LookUp.push_back(0);
+			LookUp[i] = 0;
 			r++;
 		}
 		else if(Data[i] != '\0')
@@ -73,58 +76,66 @@ std::string Base64Decode(std::string Data)
 			{
 				if(Data[i] == BaseTable[j])
 				{
-					LookUp.push_back(j);
+					LookUp[i] = j;
 					break;
 				}
 				j++;
 			}
 			if(j == 64)
 			{
-				std::cout << i << ", " << (int)Data[i] << std::endl;
+				memset(LookUp, 0, strlen(Data));
+				delete[] LookUp;
 				throw -1;
-				return Data;
+				return (char*)0;
 			}
 		}
 	}
 
-	std::string Result;
-	for(int i = 0; i < LookUp.length(); i += 4)
+	char* Result = new char[(strlen(Data) / 4) * 3 + 1];
+	for(int i = 0; i * 4 < strlen(Data); i++)
 	{
-		int k = (unsigned int)LookUp[i] << 18;
-		k += (unsigned int)LookUp[i+1] << 12;
-		k += (unsigned int)LookUp[i+2] << 6;
-		k += (unsigned int)LookUp[i+3];
+		int k = (unsigned int)LookUp[i * 4] << 18;
+		k += (unsigned int)LookUp[i * 4 + 1] << 12;
+		k += (unsigned int)LookUp[i * 4 + 2] << 6;
+		k += (unsigned int)LookUp[i * 4 + 3];
 		
-		Result.push_back(char((k & 0xFF0000) >> 16));
-		Result.push_back(char((k & 0xFF00) >> 8));
-		Result.push_back(char(k & 0xFF));
+		Result[i * 3] = char((k & 0xFF0000) >> 16);
+		Result[i * 3 + 1] = char((k & 0xFF00) >> 8);
+		Result[i * 3 + 2] = char(k & 0xFF);
 	}
-	Result.resize(Result.length() - r);
+	len = (strlen(Data) / 4) * 3 - r;
+	Result[len] = 0;
 	return Result;
 }
 
-std::string Export64(mpz_class BigNum)
+char* Export64(mpz_class& BigNum)
 {
-	char temp[1024] = {0};
+	char temp[2048] = {0};												//Big-num  max of 16384 bits
 	int size = 0;
 	mpz_export(temp, (size_t*)&size, 1, 1, 0, 0, BigNum.get_mpz_t());
 	
-	std::string Result;
+	char* Result;
 	Result = Base64Encode(temp, size);
+	memset(temp, 0, 2048);
 	return Result;
 }
 
-void Import64(std::string Value, mpz_class& BigNum)
+void Import64(const char* Value, mpz_class& BigNum)
 {
+	int size;
+	char* Decode;
 	try
 	{
-		Value = Base64Decode(Value);
+		Decode = Base64Decode(Value, size);
 	}
 	catch(int e)
 	{
 		throw -1;
+		return;
 	}
-	mpz_import(BigNum.get_mpz_t(), Value.length(), 1, 1, 0, 0, Value.c_str());
+	mpz_import(BigNum.get_mpz_t(), size, 1, 1, 0, 0, Decode);
+	memset(Decode, 0, size);
+	delete[] Decode;
 	return;
 }
 #endif

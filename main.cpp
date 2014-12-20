@@ -6,7 +6,7 @@
 
 #define IV64_LEN 24											//The max length an IV for AES could be (in base64)
 #define FILE_PIECE_LEN 2048									//The size in bytes of the blocks used for file sending
-#define RECV_SIZE (1 + IV64_LEN + FILE_PIECE_LEN + 16)		//Max size that a message could possibly be in bytes after initial setup
+#define RECV_SIZE (1 + IV64_LEN + 4 + FILE_PIECE_LEN + 16)	//Max size that a message could possibly be in bytes after initial setup
 #define MAX_RSA_SIZE 4097									//Max size in bytes that the public key when sent will fill (this is for 16384 bit RSA)
 
 #include "curve25519-donna.c"
@@ -19,7 +19,7 @@ using namespace std;
 
 void GMPSeed(gmp_randclass& rng);
 void PrintIP();
-string GetPassword();
+void GetPassword(char* buff, int buffSize);
 
 string HelpString = \
 "Secure chat program written by Ryan Andersen\n\
@@ -168,36 +168,48 @@ int main(int argc, char* argv[])
 		cout << "Private Key Password: ";
 		fflush(stdout);
 		
-		string Passwd = GetPassword();
+		char* Passwd = new char[256];
+		GetPassword(Passwd, 256);
+		cout << endl;
 		if(UseRSA)
 		{
-			if(!LoadRSAPrivateKey(PrivKeyName, Keys[1], &Passwd))
+			if(!LoadRSAPrivateKey(PrivKeyName, Keys[1], Passwd))
 			{
-				Keys[1] = 0;
+				memset(Passwd, 0, strlen(Passwd));
+				delete[] Passwd;
+				mpz_xor(Keys[1].get_mpz_t(), Keys[1].get_mpz_t(), Keys[1].get_mpz_t());
 				return -1;
 			}
 			if(!LoadRSAPublicKey(PubKeyName, Mod, Keys[0]))
 			{
+				memset(Passwd, 0, strlen(Passwd));
+				delete[] Passwd;
 				Mod = 0;
-				Keys[0] = 0;
-				Keys[1] = 0;
+				mpz_xor(Keys[0].get_mpz_t(), Keys[0].get_mpz_t(), Keys[0].get_mpz_t());
+				mpz_xor(Keys[1].get_mpz_t(), Keys[1].get_mpz_t(), Keys[1].get_mpz_t());
 				return -1;
 			}
 		}
 		else
 		{
-			if(!LoadCurvePrivateKey(PrivKeyName, MyPTP.CurveK, &Passwd))
+			if(!LoadCurvePrivateKey(PrivKeyName, MyPTP.CurveK, Passwd))
 			{
+				memset(Passwd, 0, strlen(Passwd));
+				delete[] Passwd;
 				memset((char*)MyPTP.CurveK, 0, 32);
 				return -1;
 			}
 			if(!LoadCurvePublicKey(PubKeyName, MyPTP.CurveP))
 			{
+				memset(Passwd, 0, strlen(Passwd));
+				delete[] Passwd;
 				memset((char*)MyPTP.CurveK, 0, 32);
 				memset((char*)MyPTP.CurveP, 0, 32);
 				return -1;
 			}
 		}
+		memset(Passwd, 0, strlen(Passwd));
+		delete[] Passwd;
 	}
 
 	if(PrintVals)
@@ -215,16 +227,19 @@ int main(int argc, char* argv[])
 	{
 		string PubKeyName = OutputFiles + ".pub";
 		string PrivKeyName = OutputFiles + ".priv";
+		char* Passwd1 = new char[256];
+		char* Passwd2 = new char[256];
 
 		while(true)
 		{
 			cout << "Private Key Password To Use: ";
 			fflush(stdout);
-			string Passwd1 = GetPassword();
-			cout << "Retype Password: ";
+			GetPassword(Passwd1, 256);
+			cout << "\nRetype Password: ";
 			fflush(stdout);
-			string Passwd2 = GetPassword();
-			if(Passwd1 != Passwd2)		//Mistype
+			GetPassword(Passwd2, 256);
+			cout << endl;
+			if(strcmp(Passwd1, Passwd2) != 0)		//Mistype check
 			{
 				cout << "Passwords do not match. Do you want to try again<Y/n>: ";
 				fflush(stdout);
@@ -252,17 +267,21 @@ int main(int argc, char* argv[])
 
 				if(UseRSA)
 				{
-					MakeRSAPrivateKey(PrivKeyName, Keys[1], &Passwd1, SaltStr, TempIV);
+					MakeRSAPrivateKey(PrivKeyName, Keys[1], Passwd1, SaltStr, TempIV);
 					MakeRSAPublicKey(PubKeyName, Mod, Keys[0]);
 				}
 				else
 				{
-					MakeCurvePrivateKey(PrivKeyName, MyPTP.CurveK, &Passwd1, SaltStr, TempIV);
+					MakeCurvePrivateKey(PrivKeyName, MyPTP.CurveK, Passwd1, SaltStr, TempIV);
 					MakeCurvePublicKey(PubKeyName, MyPTP.CurveP);
 				}
 				break;
 			}
 		}
+		memset(Passwd1, 0, strlen(Passwd1));
+		delete[] Passwd1;
+		memset(Passwd2, 0, strlen(Passwd2));
+		delete[] Passwd2;
 	}
 
 	cout << "All necessary Encryption values are filled\n\n";
@@ -273,6 +292,16 @@ int main(int argc, char* argv[])
 	MyPTP.UseRSA = UseRSA;
 
 	MyPTP.StartServer(1, SendPublic, SavePublic);				//Jump to the loop to handle all incoming connections and data sending
+	
+	//Clear critical values (and some public)
+	mpz_xor(SymmetricKey.get_mpz_t(), SymmetricKey.get_mpz_t(), SymmetricKey.get_mpz_t());
+	mpz_xor(MyPTP.SymKey.get_mpz_t(), MyPTP.SymKey.get_mpz_t(), MyPTP.SymKey.get_mpz_t());
+	mpz_xor(MyPTP.MyE.get_mpz_t(), MyPTP.MyE.get_mpz_t(), MyPTP.MyE.get_mpz_t());
+	mpz_xor(MyPTP.MyD.get_mpz_t(), MyPTP.MyD.get_mpz_t(), MyPTP.MyD.get_mpz_t());
+	mpz_xor(Keys[0].get_mpz_t(), Keys[0].get_mpz_t(), Keys[0].get_mpz_t());
+	mpz_xor(Keys[1].get_mpz_t(), Keys[1].get_mpz_t(), Keys[1].get_mpz_t());
+	memset((char*)MyPTP.CurveP, 0, 32);
+	memset((char*)MyPTP.CurveK, 0, 32);
 	
 	nonblock(false, true);
 	cout << "Finished cleaning, Press Enter To Exit...";
@@ -301,38 +330,33 @@ void GMPSeed(gmp_randclass& rng)
 	fclose(random);
 }
 
-string GetPassword()
+void GetPassword(char* buff, int buffSize)
 {
-	string Passwd;
+	int pos = 0;
 	nonblock(true, false);
-	while(true)
+	while(pos < buffSize)
 	{
 		if(kbhit())
 		{
 			unsigned char c = getch();
 			if(c == '\n')
 			{
-				cout << "\n";
+				buff[pos] = 0;
 				nonblock(false, true);
-				return Passwd;
+				return;
 			}
 			else if(c == 127)	//Backspace
 			{
-				if(Passwd.length() > 0)
+				if(pos > 0)
 				{
-					cout << "\b \b";
-					Passwd = Passwd.substr(0, Passwd.length()-1);
-				}
-				else if(Passwd.length() == 1)
-				{
-					cout << "\b \b";
-					Passwd.clear();
+					pos -= 1;
+					buff[pos] = 0;
 				}
 			}
 			else if((int)c >= 32 && (int)c <= 126)
 			{
-				Passwd += c;
-				cout << "*";
+				buff[pos] = c;
+				pos += 1;
 			}
 			else
 			{

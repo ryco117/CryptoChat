@@ -24,7 +24,7 @@ public:
 	/*Functions*/
 	//Server Functions
 	int StartServer(const int MAX_CLIENTS = 1, bool SendPublic = true, string SavePublic = "");
-	void ReceiveFile(std::string Msg);
+	void ReceiveFile(std::string& Msg);
 
 	//Client Functions
 	void SendMessage(void);

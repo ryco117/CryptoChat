@@ -385,11 +385,16 @@ mat4 NextRound(mat4 Key[15], int round)
 	return NewRound;
 }
 
+inline unsigned int PaddedSize(unsigned int x)
+{
+	return (x + 16 - (x % 16));
+}
+
 static mpz_class DEFAULTIV = mpz_class(0);
 class AES
 {
 public:
-	string Encrypt(mpz_class Key, string Msg, mpz_class& GMPIV = DEFAULTIV);
-	string Decrypt(mpz_class Key, string Cypher, mpz_class& GMPIV = DEFAULTIV);
+	void Encrypt(const char* Msg, unsigned int MsgLen, mpz_class& GMPIV, mpz_class& Key, char* CipherText);
+	int Decrypt(const char* Cipher, unsigned int CipherLen, mpz_class& GMPIV, mpz_class& Key, char* PlainText);
 };
 #endif
