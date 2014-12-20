@@ -46,7 +46,7 @@ Arguments List
 
 How To Build
 ------------
-**x86**
+**x86-64**
 
 make
 
