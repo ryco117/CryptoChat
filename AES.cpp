@@ -2,11 +2,38 @@
 #define AES_CPP
 #include "AES.h"
 
+#ifndef ANDROID
+extern "C"
+{
+	bool AESNI();
+	void EncryptNI(const char* Text, unsigned int size, char* IV, char* Key, char* Buffer);
+	int DecryptNI(const char* Cipher, unsigned int size, char* IV, char* Key, char* Buffer);
+}
+#endif
+
 void ByteSplit(mpz_class& Number, mat4& Matrix);
 void ByteSplit(mpz_class& Number, mat4 Matrices[2]);
 
 void AES::Encrypt(const char* Msg, unsigned int MsgLen, mpz_class& GMPIV, mpz_class& Key, char* CipherText)
 {
+	#ifndef ANDROID
+	if(AESNI())
+	{
+		size_t Size;
+		char* KeyP = new char[32];
+		char* IV = new char[16];
+		mpz_export(KeyP, &Size, 1, 32, 1, 0, Key.get_mpz_t());
+		mpz_export(IV, &Size, 1, 16, 1, 0, GMPIV.get_mpz_t());
+		
+		EncryptNI(Msg, MsgLen, IV, KeyP, CipherText);
+		memset(KeyP, 0, 32);
+		delete[] KeyP;
+		memset(IV, 0, 16);
+		delete[] IV;
+		return;
+	}
+	#endif
+	
 	mat4 State = mat4((unsigned char)0);											//4x4 Matrix to go from original to cipher text
 	mat4 CipherKey[2] = {mat4((unsigned char)0)};									//2 4x4 Matrices to hold parts 1 & 2 of the 256 bit key
 	
@@ -70,6 +97,24 @@ void AES::Encrypt(const char* Msg, unsigned int MsgLen, mpz_class& GMPIV, mpz_cl
 //The same as encrypt but in reverse...
 int AES::Decrypt(const char* Cipher, unsigned int CipherLen, mpz_class& GMPIV, mpz_class& Key, char* PlainText)
 {
+	#ifndef ANDROID
+	if(AESNI())
+	{
+		size_t Size;
+		char* KeyP = new char[32];
+		char* IV = new char[16];
+		mpz_export(KeyP, &Size, 1, 32, 1, 0, Key.get_mpz_t());
+		mpz_export(IV, &Size, 1, 16, 1, 0, GMPIV.get_mpz_t());
+		
+		unsigned int l = DecryptNI(Cipher, CipherLen, IV, KeyP, PlainText);
+		memset(KeyP, 0, 32);
+		delete[] KeyP;
+		memset(IV, 0, 16);
+		delete[] IV;
+		return l;
+	}
+	#endif
+	
 	mat4 State = mat4((unsigned char)0);
 	mat4 CipherKey[2] = {mat4((unsigned char)0)};
 	

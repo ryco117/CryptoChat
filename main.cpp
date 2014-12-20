@@ -1,7 +1,19 @@
 #include <iostream>
 #include <string>
+
 #ifndef ANDROID
 #include <ifaddrs.h>
+#endif
+
+#ifndef __bswap_64
+#define	__bswap_64(x)	(((uint64_t)(x) << 56) | \
+						(((uint64_t)(x) << 40) & 0xff000000000000ULL) | \
+						(((uint64_t)(x) << 24) & 0xff0000000000ULL) | \
+						(((uint64_t)(x) << 8)  & 0xff00000000ULL) | \
+						(((uint64_t)(x) >> 8)  & 0xff000000ULL) | \
+						(((uint64_t)(x) >> 24) & 0xff0000ULL) | \
+						(((uint64_t)(x) >> 40) & 0xff00ULL) | \
+						((uint64_t)(x)  >> 56))
 #endif
 
 #define IV64_LEN 24											//The max length an IV for AES could be (in base64)
