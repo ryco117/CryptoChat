@@ -90,6 +90,11 @@ void AES::Encrypt(const char* Msg, unsigned int MsgLen, mpz_class& GMPIV, mpz_cl
 		
 		IV = State;
 	}
+	CipherKey[0] = 0;
+	CipherKey[1] = 0;
+	for(int i = 0; i < 15; i++)
+		Keys[i] = 0;
+	
 	delete[] Keys;
 	return;
 }
@@ -156,6 +161,11 @@ int AES::Decrypt(const char* Cipher, unsigned int CipherLen, mpz_class& GMPIV, m
 
 		IV = NextIV;
 	}
+	CipherKey[0] = 0;
+	CipherKey[1] = 0;
+	for(int i = 0; i < 15; i++)
+		Keys[i] = 0;
+	
 	int len = CipherLen;
 	
 	int NBytes = (char)PlainText[len-1];

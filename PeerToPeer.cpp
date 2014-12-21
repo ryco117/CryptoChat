@@ -369,8 +369,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 				mpz_class Values = MyRSA.BigEncrypt(ClientMod, ClientE, SymKey);			//Encrypt The Symmetric Key With Their Public Key
 				string MyValues = Export64(Values);											//Base 64
 				
+				while(MyValues.size() < RECV_SIZE)
+					MyValues.push_back('\0');
+				
 				//Send The Encrypted Symmetric Key
-				if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+				if(send(Client, MyValues.c_str(), RECV_SIZE, 0) < 0)
 				{
 					perror("Connect failure");
 					return -5;
@@ -407,9 +410,12 @@ void PeerToPeer::TryConnect(bool SendPublic)
 
 				TempValues = Export64(MyE);
 				MyValues += TempValues;														//MyValues is equal to the string for the modulus + string for exp concatenated
+				
+				while(MyValues.size() < MAX_RSA_SIZE)
+					MyValues.push_back('\0');
 
 				//Send My Public Key And My Modulus Because We Started The Connection
-				if(send(Client, MyValues.c_str(), MyValues.length(), 0) < 0)
+				if(send(Client, MyValues.c_str(), MAX_RSA_SIZE, 0) < 0)
 				{
 					perror("Connect failure");
 					return;

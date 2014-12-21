@@ -76,7 +76,7 @@ int main(int argc, char* argv[])
 	//Encryption Stuff
 	RSA NewRSA;
 	AES Cipher;
-	mpz_class SymmetricKey = rng.get_z_bits(256);	//Create a 128 bit long random value as our key
+	MyPTP.SymKey = rng.get_z_bits(256);				//Create a 256 bit long random value as our key
 	mpz_class Keys[2] = {0};
 	mpz_class Mod = 0;
 	
@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
 	}
 
 	if(PrintVals)
-		cout <<"Symmetric Key: 0x" << SymmetricKey.get_str(16) << "\n\n";
+		cout <<"Symmetric Key: 0x" << MyPTP.SymKey.get_str(16) << "\n\n";
 	
 	if(LoadKeys.empty())
 	{
@@ -300,13 +300,11 @@ int main(int argc, char* argv[])
 	MyPTP.MyMod = Mod;
 	MyPTP.MyE = Keys[0];
 	MyPTP.MyD = Keys[1];
-	MyPTP.SymKey = SymmetricKey;
 	MyPTP.UseRSA = UseRSA;
 
 	MyPTP.StartServer(1, SendPublic, SavePublic);				//Jump to the loop to handle all incoming connections and data sending
 	
 	//Clear critical values (and some public)
-	mpz_xor(SymmetricKey.get_mpz_t(), SymmetricKey.get_mpz_t(), SymmetricKey.get_mpz_t());
 	mpz_xor(MyPTP.SymKey.get_mpz_t(), MyPTP.SymKey.get_mpz_t(), MyPTP.SymKey.get_mpz_t());
 	mpz_xor(MyPTP.MyE.get_mpz_t(), MyPTP.MyE.get_mpz_t(), MyPTP.MyE.get_mpz_t());
 	mpz_xor(MyPTP.MyD.get_mpz_t(), MyPTP.MyD.get_mpz_t(), MyPTP.MyD.get_mpz_t());

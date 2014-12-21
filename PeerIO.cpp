@@ -45,15 +45,14 @@ void PeerToPeer::SendFilePt1()
 		delete[] EncName;
 		if(send(Client, FileRequest, RECV_SIZE, 0) < 0)
 		{
+			Sending = 0;
 			perror("File request failure");
-			delete[] FileRequest;
-			return;
 		}
 		else
 			cout << "\nWaiting for response...";
 		
-		File.close();
 		delete[] FileRequest;
+		File.close();
 	}
 	else
 	{
@@ -150,7 +149,6 @@ void PeerToPeer::ReceiveFile(string& Msg)
 		delete[] Data;
 		
 		BytesRead += DataSize;
-
 		if(BytesRead == FileLength)
 		{
 			Sending = 0;
@@ -261,7 +259,7 @@ void PeerToPeer::ParseInput()
 				IV = RNG->get_z_bits(128);
 				CipherMsg = "x";
 				CipherMsg += Export64(IV);
-				while(CipherMsg.size() < IV64_LEN+1)
+				while(CipherMsg.size() < 1 + IV64_LEN)
 					CipherMsg.push_back('\0');
 				
 				CipherMsg[0] = 0;
@@ -274,7 +272,8 @@ void PeerToPeer::ParseInput()
 				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 16) & 0xFF));
 				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 8) & 0xFF));
 				CipherMsg.push_back((char)((__uint32_t)CipherSize & 0xFF));
-				CipherMsg += Cipher;
+				for(int i = 0; i < CipherSize; i++)
+					CipherMsg.push_back(Cipher[i]);
 				
 				delete[] Cipher;
 				SendMessage();

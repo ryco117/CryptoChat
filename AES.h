@@ -353,6 +353,15 @@ public:
 		return *this;	
 	}
 	
+	mat4& operator= (const char Src)
+	{
+		for(int col = 0; col < 4; col++)
+			for(int row = 0; row < 4; row++)
+				p[col][row] = Src;
+
+		return *this;
+	}
+	
 	bool operator== (const mat4 Src)
 	{
 		for(int col = 0; col < 4; col++)
