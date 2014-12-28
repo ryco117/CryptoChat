@@ -52,6 +52,8 @@ public:
 	//Client Vars
 	int Client;					//Socket for sending data
 	std::string ClntIP;			//string holding IP to connect to
+	std::string ProxyIP;		//string holding proxy IP if enabled
+	uint16_t ProxyPort;			//Port of proxy if enabled
 	bool ConnectedClnt;			//have we connected to them yet?
 	std::string CipherMsg;		//string holding encrypted message to send
 	char OrigText[512];			//unencrypted message (or file loc) that we have typed

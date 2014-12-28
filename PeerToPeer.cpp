@@ -6,19 +6,19 @@
 int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SavePublic)
 {
 	//		**-SERVER-**
-	if((Serv = socket(AF_INET, SOCK_STREAM, IPPROTO_IP)) < 0)		//assign Serv to a file descriptor (socket) that uses IP addresses, TCP
+	if((Serv = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0)		//assign Serv to a file descriptor (socket) that uses IP addresses, TCP
 	{
 		close(Serv);
 		return -1;
 	}
 	
-	memset(&socketInfo, 0, sizeof(socketInfo));				//Clear data inside socketInfo to be filled with server stuff
-	socketInfo.sin_family = AF_INET;					//Use IP addresses
-	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);				//Allow connection from anybody
-	socketInfo.sin_port = htons(Port);					//Use port Port
+	memset(&socketInfo, 0, sizeof(socketInfo));						//Clear data inside socketInfo to be filled with server stuff
+	socketInfo.sin_family = AF_INET;								//Use IP addresses
+	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);					//Allow connection from anybody
+	socketInfo.sin_port = htons(Port);								//Use port Port
 	
 	int optval = 1;
-	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);	//Remove Bind already used error
+	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);		//Remove Bind already used error
 	if(bind(Serv, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) < 0)	//Bind socketInfo to Serv
 	{
 		close(Serv);
@@ -28,7 +28,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	listen(Serv, MAX_CLIENTS);			//Listen for connections on Serv
 	
 	//		**-CLIENT-**
-	if(ClntIP.empty())				//If we didn't set the client ip as an argument
+	if(ClntIP.empty())					//If we didn't set the client ip as an argument
 	{
 		while(!IsIP(ClntIP))			//Keep going until we enter a real ip
 		{
@@ -39,32 +39,81 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 	}
 	
-	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);			//assign Client to a file descriptor (socket) that uses IP addresses, TCP
-	memset(&socketInfo, 0, sizeof(socketInfo));					//Clear socketInfo to be filled with client stuff
-	socketInfo.sin_family = AF_INET;							//uses IP addresses
-	socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
-	socketInfo.sin_port = htons(Port);							//uses port Port
+	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);				//assign Client to a file descriptor (socket) that uses IP addresses, TCP
+	memset(&socketInfo, 0, sizeof(socketInfo));						//Clear socketInfo to be filled with client stuff
+	socketInfo.sin_family = AF_INET;								//uses IP addresses
+	if(!ProxyIP.empty())
+	{
+		socketInfo.sin_addr.s_addr = inet_addr(ProxyIP.c_str());
+		socketInfo.sin_port = htons(ProxyPort);
+		
+		if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(struct sockaddr_in)) < 0)
+		{
+			perror("Could not connect to proxy");
+			close(Client);
+			return -2;
+		}
+		
+		//SOCKS4 - Assuming no userID is required. Could be modified if becomes relevant
+		char ReqField[9];
+		ReqField[0] = 0x04;
+		ReqField[1] = 0x01;
+		uint16_t ServerPort = htons(Port);
+		memcpy(&ReqField[2], &ServerPort, 2);
+		uint32_t ClntAddr = inet_addr(ClntIP.c_str());
+		memcpy(&ReqField[4], &ClntAddr, 4);
+		ReqField[8] = 0;
+		
+		send(Client, ReqField, 9, 0);
+		
+		char RecvField[8];
+		int nbytes = recv(Client, RecvField, 8, 0);
+		if(nbytes <= 0)
+		{
+			perror("recv");
+			close(Client);
+			return -3;
+		}
+		
+		if(RecvField[0] != 0)
+		{
+			cout << "Bad response, exiting\n";
+			close(Client);
+			return -4;
+		}
+		if(RecvField[1] != 0x5a)
+		{
+			printf("Proxy rejected connection with code %X, exiting\n", (unsigned int)RecvField[1]);
+			close(Client);
+			return -5;
+		}
+	}
+	else
+	{
+		socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
+		socketInfo.sin_port = htons(Port);							//uses port Port
+	}
 	
 	//		**-FILE DESCRIPTORS-**
-	FD_ZERO(&master);											//clear data in master
-	FD_SET(Serv, &master);										//set master to check file descriptor Serv
-	read_fds = master;											//the read_fds will check the same FDs as master
+	FD_ZERO(&master);												//clear data in master
+	FD_SET(Serv, &master);											//set master to check file descriptor Serv
+	read_fds = master;												//the read_fds will check the same FDs as master
 	
-	MySocks = new int[MAX_CLIENTS + 1];							//MySocks is a new array of sockets (ints) as long the max connections + 1
-	MySocks[0] = Serv;											//first socket is the server FD
-	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)			//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
+	MySocks = new int[MAX_CLIENTS + 1];								//MySocks is a new array of sockets (ints) as long the max connections + 1
+	MySocks[0] = Serv;												//first socket is the server FD
+	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)				//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
 		MySocks[i] = -1;
-	timeval zero = {0, 50};										//called zero for legacy reasons... assign timeval 50 milliseconds
-	fdmax = Serv;												//fdmax is the highest file descriptor to check (because they are just ints)
+	timeval zero = {0, 50};											//called zero for legacy reasons... assign timeval 50 milliseconds
+	fdmax = Serv;													//fdmax is the highest file descriptor to check (because they are just ints)
 	
 	//Progress checks
 	SentStuff = 0;
-	GConnected = false;											//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
+	GConnected = false;												//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
 	ConnectedClnt = false;
 	ConnectedSrvr = false;
 	ContinueLoop = true;
 	
-	nonblock(true, false);										//nonblocking input, disable echo
+	nonblock(true, false);											//nonblocking input, disable echo
 	while(ContinueLoop)
 	{
 		if(!GConnected && ConnectedClnt && ConnectedSrvr && SentStuff == 3)	//All values have been sent, then set, but we haven't begun! Start already!

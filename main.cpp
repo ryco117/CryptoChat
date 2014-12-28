@@ -38,21 +38,22 @@ string HelpString = \
 Contact at ryco117@gmail.com\n\n\
 Arguments List\n\n\
 Toggles:\n\
--p,\t--print\t\t\tprint all generated encryption values\n\
 -m,\t--manual\t\tWARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging\n\
 -dp,\t--disable-public\tdon't send our public key at connection. WARNING! peer must use -lp and have our public key\n\
 -r,\t--rsa\t\t\tuse RSA instead of Curve25519 ECC\n\
 -h,\t--help\t\t\tprint this dialogue\n\n\
 String Inputs:\n\
 -ip,\t--ip-address\t\tspecify the ip address to attempt to connect to\n\
+-p,\t--proxy\t\t\tuse proxy at IPv4 address and port\n\
 -o,\t--output\t\tsave the rsa keys generated to files which can be reused\n\
 -sp,\t--save-public\t\tsave the peer's public key to a specified file\n\
 -lk,\t--load-keys\t\tspecify the files to load rsa keys from (public and private) that we will use\n\
 -lp,\t--load-public\t\tspecify the file to load rsa public key from that the peer has the private key to. WARNING! peer must use -dp\n\n\
 Integer Inputs:\n\
--P, --ports\t\t\tthe port number to open and connect to\n\n\
+-P,\t--port\t\t\tthe port number to open and connect to\n\n\
 Input Argument Examples:\n\
 -ip 192.168.1.70\t\twill attempt to connect to 192.168.1.70\n\
+-p 127.0.0.1:9050\t\tconnect through proxy at localhost on port 9050 (tor default port number)\n\
 -o newKeys\t\t\twill produce newKeys.pub and newKeys.priv\n\
 -sp peerKey.pub\t\t\twill create the file peerKey.pub with the peer's rsa public key\n\
 -lk Keys\t\t\twill load the rsa values from the files Keys.pub and Keys.priv\n\
@@ -81,7 +82,6 @@ int main(int argc, char* argv[])
 	mpz_class Mod = 0;
 	
 	//Options
-	bool PrintVals = false;
 	bool ForceRand = true;
 	bool SendPublic = true;
 	bool UseRSA = false;							//Use RSA for asymmetric instead of ECC Curve25519
@@ -93,9 +93,7 @@ int main(int argc, char* argv[])
 	for(unsigned int i = 1; i < argc; i++)			//What arguments were we provided with? How should we handle them
 	{
 		string Arg = string(argv[i]);
-		if(Arg == "-p" || Arg == "--print")
-			PrintVals = true;
-		else if(Arg == "-m" || Arg == "--manual")
+		if(Arg == "-m" || Arg == "--manual")
 			ForceRand = false;
 		else if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
 		{
@@ -105,6 +103,13 @@ int main(int argc, char* argv[])
 				cout << MyPTP.ClntIP << " is not a properly formated IPv4 address and will not be used\n";
 				MyPTP.ClntIP = "";
 			}
+			i++;
+		}
+		else if((Arg == "-p" || Arg == "--proxy") && i+1 < argc)
+		{
+			string ProxyAddr = argv[i+1];
+			MyPTP.ProxyIP = ProxyAddr.substr(0, ProxyAddr.find(":"));
+			MyPTP.ProxyPort = atoi(ProxyAddr.substr(ProxyAddr.find(":") + 1).c_str());
 			i++;
 		}
 		else if(Arg == "-r" || Arg == "--rsa")
@@ -223,14 +228,11 @@ int main(int argc, char* argv[])
 		memset(Passwd, 0, strlen(Passwd));
 		delete[] Passwd;
 	}
-
-	if(PrintVals)
-		cout <<"Symmetric Key: 0x" << MyPTP.SymKey.get_str(16) << "\n\n";
 	
 	if(LoadKeys.empty())
 	{
 		if(UseRSA)
-			NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand, PrintVals);
+			NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand);
 		else
 			ECC_Curve25519_Create(MyPTP.CurveP, MyPTP.CurveK, rng);
 	}
@@ -271,11 +273,6 @@ int main(int argc, char* argv[])
 				mpz_class Salt = rng.get_z_bits(128);
 				mpz_export(SaltStr, (size_t*)&n, 1, 1, 0, 0, Salt.get_mpz_t());
 				mpz_class TempIV = rng.get_z_bits(128);
-				if(PrintVals)
-				{
-					cout << "Salt: " << Export64(Salt) << endl;
-					cout << "IV: " << TempIV.get_str(16) << endl;
-				}
 
 				if(UseRSA)
 				{
