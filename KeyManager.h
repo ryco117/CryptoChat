@@ -396,7 +396,7 @@ void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd, char*
 		char* Cipher;
 		if(FinalKey != 0)
 		{
-			Cipher = new char[Length + (16 - (Length % 16))];
+			Cipher = new char[PaddedSize(Length)];
 			crypt.Encrypt(Original, Length, IV, FinalKey, Cipher);
 		}
 		else
@@ -411,7 +411,7 @@ void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd, char*
 			File.write(I, 24);																//Write the IV in base64
 			delete[] S;
 			delete[] I;
-			File.write(Cipher, Length + (16 - (Length % 16)));
+			File.write(Cipher, PaddedSize(Length));
 			
 			memset(Original, 0, Length);
 			delete[] Cipher;
