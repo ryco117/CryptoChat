@@ -30,7 +30,7 @@ mpz_class RSA::BigDecrypt(mpz_class &Modulus, mpz_class &Key, mpz_class Cypher)
 	return BigMsg;
 }
 
-void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, bool ForceRand, bool PrintVals)
+void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, bool ForceRand)
 {
 	mpz_class PrimeP = 0;
 	mpz_class PrimeQ = 0;
@@ -48,8 +48,6 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	if(Temp == "rand" || Temp == "r" || Temp == "random" || Temp.empty())
 	{
 		BigPrime(PrimeP, rng, 2048, 24);
-		if(PrintVals)
-			cout << Export64(PrimeP) << "\n\n";
 	}
 	else
 		PrimeP = mpz_class(Temp);
@@ -64,8 +62,6 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	if(Temp == "rand" || Temp == "r" || Temp == "random" || Temp.empty())
 	{
 		BigPrime(PrimeQ, rng, 2048, 24);
-		if(PrintVals)
-			cout << Export64(PrimeQ) << "\n\n";
 	}
 	else
 		PrimeQ = mpz_class(Temp);
@@ -76,8 +72,6 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	
 	Keys[0] = 0;
 	Keys[1] = 0;
-	if(PrintVals)
-		cout << "The Modulus is " << Export64(Mod) << "\n\n";
 
 	//Set Encryption Key (Public)
 	if(ForceRand)
@@ -90,25 +84,15 @@ void RSA::KeyGenerator(mpz_class Keys[], mpz_class &Mod, gmp_randclass& rng, boo
 	if(Temp == "rand" || Temp == "r" || Temp == "random")
 	{
 		BigPrime(Keys[0], rng, 2048, 24);
-		if(PrintVals)
-			cout << Export64(Keys[0]) << "\n\n";
 	}
 	else if(Temp.empty())
 	{
 		Keys[0] = mpz_class(65537);
-		if(PrintVals)
-			cout << "65537\n\n";
 	}
 	else
 		Keys[0] = mpz_class(Temp);
 	
 	//Set Decryption Key (Private)
 	mpz_invert(Keys[1].get_mpz_t(), Keys[0].get_mpz_t(), EulersTot.get_mpz_t());
-	
-	if(PrintVals)
-	{
-		cout << "Eulers Totient: " << Export64(EulersTot) << "\n\n";
-		cout << "D is equal to: " << Export64(Keys[1]) << "\n\n";
-	}
 	return;
 }
