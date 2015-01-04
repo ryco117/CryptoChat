@@ -58,7 +58,7 @@ Input Argument Examples:\n\
 -sp peerKey.pub\t\t\tcreate the file \"peerKey.pub\" with the peer's public key\n\
 -lk Keys\t\t\tload the keys from the files \"Keys.pub\" and \"Keys.priv\"\n\
 -lp PeerKey.pub\t\t\tload the peer's public key from \"PeerKey.pub\"\n\
--bp 4321\t\t\tlisten on port 4321\n\n";
+-bp 4321\t\t\tlisten for connections on port 4321\n\n";
 
 int main(int argc, char* argv[])
 {

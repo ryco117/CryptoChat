@@ -1,6 +1,6 @@
 CC=g++
 ACC=/usr/android-toolchain/bin/arm-linux-androideabi-g++
-CFLAGS=-lgmpxx -lgmp -lscrypt -Wno-unused-result
+CFLAGS=-Wl,-Bstatic -lgmpxx -lgmp -lscrypt -Wl,-Bdynamic -Wno-unused-result
 ACFLAGS=-I/usr/android-toolchain/include -L/usr/android-toolchain/lib -DANDROID
 OUT=./bin/CryptoChat
 AOUT=./bin/AndroidChat
