@@ -15,7 +15,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	memset(&socketInfo, 0, sizeof(socketInfo));						//Clear data inside socketInfo to be filled with server stuff
 	socketInfo.sin_family = AF_INET;								//Use IP addresses
 	socketInfo.sin_addr.s_addr = htonl(INADDR_ANY);					//Allow connection from anybody
-	socketInfo.sin_port = htons(Port);								//Use port Port
+	socketInfo.sin_port = htons(BindPort);							//Use port BindPort
 	
 	int optval = 1;
 	setsockopt(Serv, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);		//Remove Bind already used error
@@ -25,74 +25,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		perror("Bind");
 		return -2;
 	}
-	listen(Serv, MAX_CLIENTS);			//Listen for connections on Serv
-	
-	//		**-CLIENT-**
-	if(ClntIP.empty())					//If we didn't set the client ip as an argument
-	{
-		while(!IsIP(ClntIP))			//Keep going until we enter a real ip
-		{
-			if(!ClntIP.empty())
-				cout << "That is not a properly formated IPv4 address and will not be used\n";
-			cout  << "Client's IP: ";
-			getline(cin, ClntIP);
-		}
-	}
-	
-	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);				//assign Client to a file descriptor (socket) that uses IP addresses, TCP
-	memset(&socketInfo, 0, sizeof(socketInfo));						//Clear socketInfo to be filled with client stuff
-	socketInfo.sin_family = AF_INET;								//uses IP addresses
-	if(!ProxyIP.empty())
-	{
-		socketInfo.sin_addr.s_addr = inet_addr(ProxyIP.c_str());
-		socketInfo.sin_port = htons(ProxyPort);
-		
-		if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(struct sockaddr_in)) < 0)
-		{
-			perror("Could not connect to proxy");
-			close(Client);
-			return -2;
-		}
-		
-		//SOCKS4 - Assuming no userID is required. Could be modified if becomes relevant
-		char ReqField[9];
-		ReqField[0] = 0x04;
-		ReqField[1] = 0x01;
-		uint16_t ServerPort = htons(Port);
-		memcpy(&ReqField[2], &ServerPort, 2);
-		uint32_t ClntAddr = inet_addr(ClntIP.c_str());
-		memcpy(&ReqField[4], &ClntAddr, 4);
-		ReqField[8] = 0;
-		
-		send(Client, ReqField, 9, 0);
-		
-		char RecvField[8];
-		int nbytes = recv(Client, RecvField, 8, 0);
-		if(nbytes <= 0)
-		{
-			perror("recv");
-			close(Client);
-			return -3;
-		}
-		
-		if(RecvField[0] != 0)
-		{
-			cout << "Bad response, exiting\n";
-			close(Client);
-			return -4;
-		}
-		if(RecvField[1] != 0x5a)
-		{
-			printf("Proxy rejected connection with code %X, exiting\n", (unsigned int)RecvField[1]);
-			close(Client);
-			return -5;
-		}
-	}
-	else
-	{
-		socketInfo.sin_addr.s_addr = inet_addr(ClntIP.c_str());		//connects to the ip we specified
-		socketInfo.sin_port = htons(Port);							//uses port Port
-	}
+	listen(Serv, MAX_CLIENTS);										//Listen for connections on Serv
 	
 	//		**-FILE DESCRIPTORS-**
 	FD_ZERO(&master);												//clear data in master
@@ -106,6 +39,61 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	timeval zero = {0, 50};											//called zero for legacy reasons... assign timeval 50 milliseconds
 	fdmax = Serv;													//fdmax is the highest file descriptor to check (because they are just ints)
 	
+	//		**-CLIENT-**
+	if(ClntAddr.empty())											//If we didn't set the peer's address as an argument
+	{
+		cout  << "Client's IP: ";
+		getline(cin, ClntAddr);
+	}
+	
+	Client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);				//assign Client to a file descriptor (socket) that uses IP addresses, TCP
+	memset(&socketInfo, 0, sizeof(socketInfo));						//Clear socketInfo to be filled with client stuff
+	socketInfo.sin_family = AF_INET;								//uses IP addresses
+	if(!ProxyAddr.empty())
+	{
+		if(IsIP(ProxyAddr))
+			socketInfo.sin_addr.s_addr = inet_addr(ProxyAddr.c_str());
+		else
+		{
+			socketInfo.sin_addr.s_addr = Resolve(ProxyAddr);
+			if(socketInfo.sin_addr.s_addr == 0)
+			{
+				cout << "Couldn't resolve proxy address\n";
+				close(Client);
+				close(Serv);
+				return -4;
+			}
+		}
+		socketInfo.sin_port = htons(ProxyPort);
+		
+		if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(struct sockaddr_in)) < 0)
+		{
+			perror("Could not connect to proxy");
+			close(Client);
+			close(Serv);
+			return -3;
+		}
+		FD_SET(Client, &master);
+		if(Client > fdmax)
+			fdmax = Client;
+	}
+	else
+	{
+		if(IsIP(ClntAddr))
+			socketInfo.sin_addr.s_addr = inet_addr(ClntAddr.c_str());
+		else
+		{
+			socketInfo.sin_addr.s_addr = Resolve(ClntAddr);
+			if(socketInfo.sin_addr.s_addr == 0)
+			{
+				cout << "Couldn't resolve peer address\n";
+				close(Client);
+				close(Serv);
+				return -4;
+			}
+		}
+		socketInfo.sin_port = htons(PeerPort);						//uses port PeerPort
+	}
 	//Progress checks
 	SentStuff = 0;
 	GConnected = false;												//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
@@ -141,22 +129,24 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		for(unsigned int i = 0; i < MAX_CLIENTS + 1; i++)			//Look through all sockets
 		{
-			if(MySocks[i] == -1)		//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
+			if(MySocks[i] == -1)									//if MySocks[i] == -1 then go just continue the for loop, this part of the array hasn't been assigned a socket
 				continue;
 			if(FD_ISSET(MySocks[i], &read_fds))						//check read_fds to see if there is unread data in MySocks[i]
 			{
-				if(i == 0)		//if i = 0, then based on line 54, we know that we are looking at data on the Serv socket... This means a new connection!!
+				if(i == 0)											//if i = 0, then based on line 54, we know that we are looking at data on the Serv socket... This means a new connection!!
 				{
 					if((newSocket = accept(Serv, NULL, NULL)) < 0)	//assign socket newSocket to the person we are accepting on Serv
-					{
-						close(Serv);								//...unless it errors
+					{												//...unless it errors
+						if(ConnectedClnt)
+							close(Client);
+						close(Serv);
 						perror("Accept");
 						return -4;
 					}
 					ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
 					
-					FD_SET(newSocket, &master); 					// add the newSocket FD to master set
-					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)	//assign an unassigned MySocks to newSocket
+					FD_SET(newSocket, &master); 					//add the newSocket FD to master set
+					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)//assign an unassigned MySocks to newSocket
 					{
 						if(MySocks[j] == -1) 	//Not in use
 						{
@@ -166,50 +156,63 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							break;
 						}
 					}
-					if(UseRSA && !HasPub)					//Check if we haven't already assigned the client's public key through an arg.
+					if(HasPub && !UseRSA)
+					{
+						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
+						unsigned char Hash[32] = {0};
+
+						curve25519_donna(SharedKey, CurveK, CurvePPeer);						
+						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 14, 2, Hash, 32);		//Use agreed upon salt
+						mpz_import(SymKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
+					}
+				}
+				else if(!HasPub)
+				{
+					if(UseRSA)
 					{
 						char* TempVA = new char[MAX_RSA_SIZE];
 						string TempVS;
-						nbytes = recvr(newSocket, TempVA, MAX_RSA_SIZE, 0);
-						
-						for(unsigned int i = 0; i < nbytes; i++)
+						nbytes = recvr(MySocks[i], TempVA, MAX_RSA_SIZE, 0);
+
+						for(unsigned int i = 0; i < (unsigned int)nbytes; i++)
 							TempVS.push_back(TempVA[i]);
-						
+
 						try
 						{
-							Import64(TempVS.substr(0, TempVS.find("|", 1)).c_str(), ClientMod);		//Modulus in Base64 in first half
-							//cout << "CM: " << Export64(ClientMod) << "\n\n";
+							Import64(TempVS.substr(0, TempVS.find("|", 1)).c_str(), ClientMod);	//Modulus in Base64 in first half
 						}
 						catch(int e)
 						{
 							cout << "The received modulus is bad\n";
+							close(Serv);
+							if(ConnectedClnt)
+								close(Client);
 							return -1;
 						}
-						
+
 						try
 						{
-							Import64(TempVS.substr(TempVS.find("|", 1)+1).c_str(), ClientE);		//Encryption key in Base64 in second half
-							//cout << "CE: " << Export64(ClientE) << "\n\n";
+							Import64(TempVS.substr(TempVS.find("|", 1)+1).c_str(), ClientE);	//Encryption key in Base64 in second half
 						}
 						catch(int e)
 						{
 							cout << "The received RSA encryption key is bad\n";
+							close(Serv);
+							if(ConnectedClnt)
+								close(Client);
 							return -1;
 						}
-						if(!SavePublic.empty())														//If we set the string for where to save their public key...
-							MakeRSAPublicKey(SavePublic, ClientMod, ClientE);						//SAVE THEIR PUBLIC KEY!
-						
+						if(!SavePublic.empty())		//If we set the string for where to save their public key...
+							MakeRSAPublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
+
 						delete[] TempVA;
 					}
-					else if(!UseRSA)
+					else
 					{
-						if(!HasPub)
-						{
-							nbytes = recvr(newSocket, (char*)CurvePPeer, 32, 0);
-							if(!SavePublic.empty())
-								MakeCurvePublicKey(SavePublic, CurvePPeer);
-						}
-						
+						nbytes = recvr(MySocks[i], (char*)CurvePPeer, 32, 0);
+						if(!SavePublic.empty())
+							MakeCurvePublicKey(SavePublic, CurvePPeer);
+
 						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
 						unsigned char Hash[32] = {0};
 
@@ -219,12 +222,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					}
 					HasPub = true;
 				}
-				else		//Data is on a new socket
+				else
 				{
 					char buf[RECV_SIZE];	//RECV_SIZE is the max possible incoming data (2048 byte file part with 24 byte iv and leading byte)
 					memset(buf, 0, RECV_SIZE);
+					nbytes = recvr(MySocks[i], buf, RECV_SIZE, 0);
 					
-					if((nbytes = recvr(MySocks[i], buf, RECV_SIZE, 0)) <= 0)		//handle data from a client
+					if(nbytes <= 0)		//handle data from a client
 					{
 						// got error or connection closed by client
 						if(nbytes == 0)
@@ -234,7 +238,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							for(int j = 0; j < currntLength + 9; j++)
 								cout << " ";
 							cout << "\r";
-							cout <<"Server: socket " << MySocks[i] << " hung up\n";
+							cout <<"Peer " << i << " disconnected\n";
 							return 0;
 						}
 						else
@@ -244,7 +248,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						}
 						close(MySocks[i]); // bye!
 						MySocks[i] = -1;
-						FD_CLR(MySocks[i], &master); // remove from master set
+						FD_CLR(MySocks[i], &master);
 						ContinueLoop = false;
 					}
 					else if(SentStuff == 2 && UseRSA)						//if SentStuff == 2, then we still need the symmetric key (should only get here if RSA)
@@ -289,7 +293,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								cout << "The received IV is bad (Message)\n";
+								cout << "The received message is corrupt\n";
 								continue;
 							}
 							
@@ -314,7 +318,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								cout << "The received IV is bad (File Request)\n";
+								cout << "The received file request is corrupt\n";
 								continue;
 							}
 
@@ -388,7 +392,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								cout << "The received IV is bad (File Piece)\n";
+								cout << "The received file piece is bad\n";
 								Sending = 0;
 								continue;
 							}
@@ -407,7 +411,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		if(Sending == 3)
 			SendFilePt2();
-		if(!ConnectedClnt)																	//Not conected yet?!?
+		if(!ConnectedClnt)																	//Not connected yet?!?
 		{
 			TryConnect(SendPublic);															//Lets try to change that
 		}
@@ -444,45 +448,136 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 
 void PeerToPeer::TryConnect(bool SendPublic)
 {
-	if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) >= 0) 			//attempt to connect using socketInfo with client values
+	if(ProxyPort > 0)
 	{
-		fprintf(stderr, "Connected!\n");
-		if(SendPublic)
+		if(!ProxyRequest)
 		{
-			if(UseRSA)
+			if(IsIP(ClntAddr))
 			{
-				string TempValues = "";
-				string MyValues = "";
-
-				TempValues = Export64(MyMod);												//Base64 will save digits
-				MyValues = TempValues + "|";												//Pipe char to seperate keys
-
-				TempValues = Export64(MyE);
-				MyValues += TempValues;														//MyValues is equal to the string for the modulus + string for exp concatenated
-				
-				while(MyValues.size() < MAX_RSA_SIZE)
-					MyValues.push_back('\0');
-
-				//Send My Public Key And My Modulus Because We Started The Connection
-				if(send(Client, MyValues.c_str(), MAX_RSA_SIZE, 0) < 0)
-				{
-					perror("Connect failure");
-					return;
-				}
+				//SOCKS4 - Assuming no userID is required. Could be modified if becomes relevant
+				char ReqField[9];
+				ReqField[0] = 0x04;
+				ReqField[1] = 0x01;
+				uint16_t ServerPort = htons(PeerPort);
+				memcpy(&ReqField[2], &ServerPort, 2);
+				uint32_t ClntAddrBytes = inet_addr(ClntAddr.c_str());
+				memcpy(&ReqField[4], &ClntAddrBytes, 4);
+				ReqField[8] = 0;
+				send(Client, ReqField, 9, 0);
 			}
 			else
 			{
-				if(send(Client, CurveP, 32, 0) < 0)
+				//SOCKS4a - Assuming no userID is required. Could be modified if becomes relevant
+				char* ReqField = new char[9 + ClntAddr.size() + 1];
+				memset(ReqField, 0, 9 + ClntAddr.size() + 1);
+
+				ReqField[0] = 0x04;
+				ReqField[1] = 0x01;
+				uint16_t ServerPort = htons(PeerPort);
+				memcpy(&ReqField[2], &ServerPort, 2);
+				ReqField[7] = 0xFF;
+				memcpy(&ReqField[9], ClntAddr.c_str(), ClntAddr.size());
+				send(Client, ReqField, 9 + ClntAddr.size() + 1, 0);
+				delete[] ReqField;
+			}
+
+			ProxyRequest = true;
+			return;
+		}
+
+		if(FD_ISSET(Client, &read_fds))
+		{
+			ProxyRequest = false;
+			char RecvField[8];
+			int nbytes = recv(Client, RecvField, 8, 0);
+			if(nbytes <= 0)
+			{
+				//cout << "Disconnected from proxy\n";
+				FD_CLR(Client, &master);
+				close(Client);
+				Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+				if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(struct sockaddr_in)) < 0)
 				{
-					perror("Connect failure");
+					cout << "Could not connect to proxy, " << strerror(errno) << endl;
+					close(Client);
+					close(Serv);
 					return;
 				}
+				FD_SET(Client, &master);
+				if(Client > fdmax)
+					fdmax = Client;
+				return;
+			}
+
+			if(RecvField[0] != 0)
+			{
+				cout << "Proxy gave bad reply, exiting\n";
+				close(Client);
+				close(Serv);
+				ContinueLoop = false;
+				return;
+			}
+			if(RecvField[1] != 0x5a)
+			{
+				FD_CLR(Client, &master);
+				close(Client);
+				Client = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+				if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(struct sockaddr_in)) < 0)
+				{
+					cout << "Could not connect to proxy, " << strerror(errno) << endl;
+					close(Client);
+					close(Serv);
+					ContinueLoop = false;
+					return;
+				}
+				FD_SET(Client, &master);
+				if(Client > fdmax)
+					fdmax = Client;
+				return;
 			}
 		}
-		SentStuff = 1;			//We have sent our keys
-			
-		ConnectedClnt = true;
-		fprintf(stderr, "Waiting...");
+		else
+			return;
 	}
+	else if(connect(Client, (struct sockaddr*)&socketInfo, sizeof(socketInfo)) < 0)
+		return;
+
+	//Connect succeeded!!!
+	if(SendPublic)
+	{
+		if(UseRSA)
+		{
+			string TempValues = "";
+			string MyValues = "";
+
+			TempValues = Export64(MyMod);		//Base64 will save digits
+			MyValues = TempValues + "|";		//Pipe char to seperate keys
+
+			TempValues = Export64(MyE);
+			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
+
+			while(MyValues.size() < MAX_RSA_SIZE)
+				MyValues.push_back('\0');
+
+			//Send My Public Key And My Modulus Because We Started The Connection
+			if(send(Client, MyValues.c_str(), MAX_RSA_SIZE, 0) < 0)
+			{
+				perror("Couldn't send public key");
+				return;
+			}
+		}
+		else
+		{
+			if(send(Client, CurveP, 32, 0) < 0)
+			{
+				perror("Couldn't send public key");
+				return;
+			}
+		}
+	}
+	
+	SentStuff = 1;			//We have sent our keys
+	ConnectedClnt = true;
+	fprintf(stderr, "Waiting...");
 	return;
 }

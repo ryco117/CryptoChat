@@ -38,27 +38,27 @@ string HelpString = \
 Contact at ryco117@gmail.com\n\n\
 Arguments List\n\n\
 Toggles:\n\
--m,\t--manual\t\tWARNING! this stops auto-assigning random RSA key values and is pretty much strictly for debugging\n\
 -dp,\t--disable-public\tdon't send our public key at connection. WARNING! peer must use -lp and have our public key\n\
--r,\t--rsa\t\t\tuse RSA instead of Curve25519 ECC\n\
+-r,\t--rsa\t\t\tuse RSA instead of Curve25519. Peer must do this as well (note. this effects how keys are loaded, saved)\n\
 -h,\t--help\t\t\tprint this dialogue\n\n\
 String Inputs:\n\
--ip,\t--ip-address\t\tspecify the ip address to attempt to connect to\n\
--p,\t--proxy\t\t\tuse proxy at IPv4 address and port\n\
--o,\t--output\t\tsave the rsa keys generated to files which can be reused\n\
+-ip,\t--ip-address\t\tspecify the ip address (or hostname) to attempt to connect to\n\
+-p,\t--proxy\t\t\tspecify the address and port to use as proxy\n\
+-o,\t--output\t\tsave the keys generated to files\n\
 -sp,\t--save-public\t\tsave the peer's public key to a specified file\n\
--lk,\t--load-keys\t\tspecify the files to load rsa keys from (public and private) that we will use\n\
--lp,\t--load-public\t\tspecify the file to load rsa public key from that the peer has the private key to. WARNING! peer must use -dp\n\n\
+-lk,\t--load-keys\t\tspecify files to load public and private keys from\n\
+-lp,\t--load-public\t\tspecify the file to load the peer's public key from\n\n\
 Integer Inputs:\n\
--P,\t--port\t\t\tthe port number to open and connect to\n\n\
+-bp,\t--bind-port\t\tthe port number to listen on\n\
+-pp,\t--peer-port\t\tthe port number to connect to\n\n\
 Input Argument Examples:\n\
--ip 192.168.1.70\t\twill attempt to connect to 192.168.1.70\n\
--p 127.0.0.1:9050\t\tconnect through proxy at localhost on port 9050 (tor default port number)\n\
--o newKeys\t\t\twill produce newKeys.pub and newKeys.priv\n\
--sp peerKey.pub\t\t\twill create the file peerKey.pub with the peer's rsa public key\n\
--lk Keys\t\t\twill load the rsa values from the files Keys.pub and Keys.priv\n\
--lp PeerKey.pub\t\t\twill load the peer's public key from PeerKey.pub\n\
--P 4321\t\t\t\twill open port number 4321 for this session, and will connect to the same number\n\n";
+-ip 192.168.1.70\t\tattempt to connect to 192.168.1.70\n\
+-p localhost:9050\t\tconnect through proxy at localhost on port 9050 (tor default port number)\n\
+-o newKeys\t\t\tproduce \"newKeys.pub\" and \"newKeys.priv\"\n\
+-sp peerKey.pub\t\t\tcreate the file \"peerKey.pub\" with the peer's public key\n\
+-lk Keys\t\t\tload the keys from the files \"Keys.pub\" and \"Keys.priv\"\n\
+-lp PeerKey.pub\t\t\tload the peer's public key from \"PeerKey.pub\"\n\
+-bp 4321\t\t\tlisten on port 4321\n\n";
 
 int main(int argc, char* argv[])
 {
@@ -68,7 +68,9 @@ int main(int argc, char* argv[])
 	
 	PeerToPeer MyPTP;
 	MyPTP.RNG = &rng;
-	MyPTP.Port = 5001;
+	MyPTP.BindPort = 5001;
+	MyPTP.PeerPort = 5001;
+	MyPTP.ProxyPort = 0;
 	MyPTP.ClientMod = 0;
 	MyPTP.ClientE = 0;
 	MyPTP.Sending = 0;
@@ -82,7 +84,6 @@ int main(int argc, char* argv[])
 	mpz_class Mod = 0;
 	
 	//Options
-	bool ForceRand = true;
 	bool SendPublic = true;
 	bool UseRSA = false;							//Use RSA for asymmetric instead of ECC Curve25519
 	string LoadPublic = "";
@@ -93,22 +94,15 @@ int main(int argc, char* argv[])
 	for(unsigned int i = 1; i < argc; i++)			//What arguments were we provided with? How should we handle them
 	{
 		string Arg = string(argv[i]);
-		if(Arg == "-m" || Arg == "--manual")
-			ForceRand = false;
-		else if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
+		if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
 		{
-			MyPTP.ClntIP = argv[i+1];
-			if(!IsIP(MyPTP.ClntIP))
-			{
-				cout << MyPTP.ClntIP << " is not a properly formated IPv4 address and will not be used\n";
-				MyPTP.ClntIP = "";
-			}
+			MyPTP.ClntAddr = argv[i+1];
 			i++;
 		}
 		else if((Arg == "-p" || Arg == "--proxy") && i+1 < argc)
 		{
 			string ProxyAddr = argv[i+1];
-			MyPTP.ProxyIP = ProxyAddr.substr(0, ProxyAddr.find(":"));
+			MyPTP.ProxyAddr = ProxyAddr.substr(0, ProxyAddr.find(":"));
 			MyPTP.ProxyPort = atoi(ProxyAddr.substr(ProxyAddr.find(":") + 1).c_str());
 			i++;
 		}
@@ -129,13 +123,23 @@ int main(int argc, char* argv[])
 			LoadPublic = argv[i+1];
 			i++;
 		}
-		else if((Arg == "-P" || Arg == "--port") && i+1 < argc)
+		else if((Arg == "-bp" || Arg == "--bind-port") && i+1 < argc)
 		{
-			MyPTP.Port = atoi(argv[i+1]);
-			if(MyPTP.Port <= 0)
+			MyPTP.BindPort = atoi(argv[i+1]);
+			if((signed int)MyPTP.BindPort <= 0 || MyPTP.BindPort >= 65536)
 			{
 				cout << "Bad port number. Using default 5001\n";
-				MyPTP.Port = 5001;
+				MyPTP.BindPort = 5001;
+			}
+			i++;
+		}
+		else if((Arg == "-pp" || Arg == "--peer-port") && i+1 < argc)
+		{
+			MyPTP.PeerPort = atoi(argv[i+1]);
+			if((signed int)MyPTP.PeerPort <= 0 || MyPTP.PeerPort >= 65536)
+			{
+				cout << "Bad port number. Using default 5001\n";
+				MyPTP.PeerPort = 5001;
 			}
 			i++;
 		}
@@ -232,7 +236,7 @@ int main(int argc, char* argv[])
 	if(LoadKeys.empty())
 	{
 		if(UseRSA)
-			NewRSA.KeyGenerator(Keys, Mod, rng, ForceRand);
+			NewRSA.KeyGenerator(Keys, Mod, rng, true);
 		else
 			ECC_Curve25519_Create(MyPTP.CurveP, MyPTP.CurveK, rng);
 	}

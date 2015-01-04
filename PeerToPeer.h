@@ -10,9 +10,10 @@
 
 #include <unistd.h>
 #include <sys/socket.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <netdb.h>
+#include <errno.h>
 
 #include "RSA.cpp"
 #include "AES.cpp"
@@ -51,9 +52,10 @@ public:
 
 	//Client Vars
 	int Client;					//Socket for sending data
-	std::string ClntIP;			//string holding IP to connect to
-	std::string ProxyIP;		//string holding proxy IP if enabled
+	std::string ClntAddr;		//string holding IP to connect to
+	std::string ProxyAddr;		//string holding proxy IP if enabled
 	uint16_t ProxyPort;			//Port of proxy if enabled
+	bool ProxyRequest;			//Did we send a proxy request (without response)
 	bool ConnectedClnt;			//have we connected to them yet?
 	std::string CipherMsg;		//string holding encrypted message to send
 	char OrigText[512];			//unencrypted message (or file loc) that we have typed
@@ -64,7 +66,8 @@ public:
 	unsigned int FilePos;		//Position in the file we are sending
 
 	//Both
-	unsigned int Port;
+	unsigned int PeerPort;
+	unsigned int BindPort;
 	unsigned int SentStuff;		//an int to check which stage of the connection we are on
 	bool GConnected;
 	bool ContinueLoop;
@@ -90,13 +93,14 @@ public:
 	int* MySocks;
 };
 
-bool IsIP(string IP)			//127.0.0.1
+bool IsIP(string& IP)										//127.0.0.1
 {
 	if(IP.length() >= 7 && IP.length() <= 15)
 	{
-		char Periods = 0;
-		char PerPos[5] = {0};	//PerPos[0] is 0, three periods, then PerPos[4] points one past the string
-		for(unsigned int i = 0; i < IP.length(); i++)
+        unsigned char Periods = 0;
+        char PerPos[5] = {0};								//PerPos[0] is -1, three periods, then PerPos[4] points one past the string
+		PerPos[0] = -1;
+        for(unsigned char i = 0; i < IP.length(); i++)
 		{
 			if(IP[i] == '.')
 			{
@@ -113,10 +117,10 @@ bool IsIP(string IP)			//127.0.0.1
 		int iTemp = 0;
 		for(int i = 0; i < 4; i++)
 		{
-			if((PerPos[i+1]-1) - PerPos[i] > 0)		//Check for two side by side periods
+			if((PerPos[i+1]-1) != PerPos[i])				//Check for two side by side periods
 			{
-				iTemp = atoi(IP.substr(PerPos[i], PerPos[i+1] - PerPos[i]).c_str());
-				if(iTemp > 255)
+				iTemp = atoi(IP.substr(PerPos[i]+1, PerPos[i+1] - (PerPos[i] + 1)).c_str());
+				if(iTemp > 255 || iTemp < 0)
 					return false;
 			}
 			else
@@ -126,6 +130,33 @@ bool IsIP(string IP)			//127.0.0.1
 	else
 		return false;
 	
-	return true;
+    return true;
+}
+
+in_addr_t Resolve(string& addr)
+{
+	in_addr_t IP;
+	memset(&IP, 0, sizeof(in_addr_t));
+
+	//Resolve IPv4 address from hostname
+	struct addrinfo hints;
+	struct addrinfo *info, *p;
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+
+	int Info;
+	if((Info = getaddrinfo(addr.c_str(), NULL, &hints, &info)) != 0)
+	{
+		return IP;
+	}
+	p = info;
+	while(p->ai_family != AF_INET)							//Make sure address is IPv4
+	{
+		p = p->ai_next;
+	}
+	IP = (((sockaddr_in*)p->ai_addr)->sin_addr).s_addr;
+	freeaddrinfo(info);
+	return IP;
 }
 #endif
