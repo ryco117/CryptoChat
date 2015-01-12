@@ -14,10 +14,10 @@ char BaseTable[] = {
 '4', '5', '6', '7', '8', '9', '+', '/'
 };
 
-char* Base64Encode(const char* DataC, int len)
+char* Base64Encode(const char* DataC, unsigned int len)
 {
 	char* Result;
-	int r = len % 3;
+	unsigned int r = len % 3;
 	unsigned char* Data = new unsigned char[len + ((3 - r) % 3)];
 	memcpy(Data, DataC, len);
 	
@@ -58,7 +58,7 @@ char* Base64Encode(const char* DataC, int len)
 	return Result;
 }
 
-char* Base64Decode(const char* Data, int& len)
+char* Base64Decode(const char* Data, unsigned int& len)
 {
 	char* LookUp = new char[strlen(Data)];
 	char r = 0;
@@ -111,8 +111,18 @@ char* Base64Decode(const char* Data, int& len)
 char* Export64(mpz_class& BigNum)
 {
 	char temp[2048] = {0};												//Big-num  max of 16384 bits
-	int size = 0;
+	unsigned int size = 0;
 	mpz_export(temp, (size_t*)&size, 1, 1, 0, 0, BigNum.get_mpz_t());
+	
+	size = 1;
+	mpz_class MSBFinder = 1;
+	while(MSBFinder != 0)
+	{
+		mpz_div_2exp(MSBFinder.get_mpz_t(), BigNum.get_mpz_t(), size);
+		size += 1;
+	}
+	size -= 1;				//1 0 0 1 1 0 0 1 0 0 1
+	size = ((8 - (size % 8)) + size) / 8;
 	
 	char* Result;
 	Result = Base64Encode(temp, size);
@@ -122,7 +132,7 @@ char* Export64(mpz_class& BigNum)
 
 void Import64(const char* Value, mpz_class& BigNum)
 {
-	int size;
+	unsigned int size;
 	char* Decode;
 	try
 	{

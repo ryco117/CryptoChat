@@ -14,7 +14,7 @@ Arguments List
 
 **Toggles:**
 ```
--dp	--disable-public	//don't send your public key at connection. WARNING! peer must use -lp and have your public key
+-dp	--disable-public	//don't send our static public key at connection
 -r  --rsa				//use RSA instead of Curve25519. Peer must do this as well (note. this effects how keys are loaded, saved)
 -h	--help				//print this dialogue
 ```
@@ -23,7 +23,6 @@ Arguments List
 -ip	--ip-address		//specify the ip address (or hostname) to attempt to connect to
 -p	--proxy				//specify the address and port to use as proxy
 -o	--output			//save the keys generated to files
--sp --save-public		//save the peer's public key to a specified file
 -lk	--load-keys			//specify files to load public and private keys from
 -lp	--load-public		//specify the file to load the peer's public key from
 ```
@@ -39,7 +38,6 @@ Arguments List
 -ip 192.168.1.70		//attempt to connect to 192.168.1.70
 -p localhost:9050		//connect through proxy at localhost on port 9050 (tor default port number)
 -o newKeys				//produce "newKeys.pub" and "newKeys.priv"
--sp peerKey.pub			//create the file "peerKey.pub" with the peer's public key
 -lk Keys				//load the keys from the files "Keys.pub" and "Keys.priv"
 -lp PeerKey.pub			//load the peer's public key from "PeerKey.pub"
 -bp 4321				//listen for connections on port 4321

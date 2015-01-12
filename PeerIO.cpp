@@ -85,6 +85,9 @@ void PeerToPeer::SendFilePt2()
 		else
 		{
 			Sending = 0;	//file is done after this
+			memset(OrigText, 0, 512);
+			CurPos = 0;
+			currntLength = 0;
 			cout << "\r";
 			for(int i = 0; i < currntLength + 15; i++)
 				cout << " ";
@@ -174,7 +177,7 @@ void PeerToPeer::ReceiveFile(string& Msg)
 	return;
 }
 
-void PeerToPeer::DropLine(string pBuffer)
+void PeerToPeer::DropEncMsg(string pBuffer)
 {
 	cout << "\r";												//Clear what was already printed on this line
 	for(int j = 0; j < currntLength + 15; j++)
@@ -187,6 +190,31 @@ void PeerToPeer::DropLine(string pBuffer)
 	
 	memset(print, 0, pBuffer.length());
 	delete[] print;
+	
+	if(Sending != 1)
+		cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
+	else
+		cout << "\nFile Location: " << OrigText;
+	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
+		cout << "\b";
+	
+	return;
+}
+
+void PeerToPeer::DropAppMsg(string Msg)
+{
+	cout << "\r";													//Clear what was already printed on this line
+	for(int j = 0; j < currntLength + 15; j++)
+		cout << " ";
+	cout << "\r";
+	cout << Msg;													//Print What we received
+	if(Sending != 1)
+		cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
+	else
+		cout << "\nFile Location: " << OrigText;
+	for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
+		cout << "\b";
+	
 	return;
 }
 

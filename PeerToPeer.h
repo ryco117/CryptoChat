@@ -26,12 +26,13 @@ public:
 	//Server Functions
 	int StartServer(const int MAX_CLIENTS = 1, bool SendPublic = true, string SavePublic = "");
 	void ReceiveFile(std::string& Msg);
+	void DropEncMsg(std::string pBuffer);		//Peer sent message (still encrypted) needs to be printed and current text dropped
+	void DropAppMsg(std::string Msg);			//App needs to print message, drop user text below
 
 	//Client Functions
 	void SendMessage(void);
 	void ParseInput(void);
 	void TryConnect(bool SendPublic = true);
-	void DropLine(std::string pBuffer);
 	void SendFilePt1(void);
 	void SendFilePt2(void);
 
@@ -48,7 +49,8 @@ public:
 	unsigned int BytesRead;		//bytes that we have received for the file
 	mpz_class PeerIV;			//the initialization vector for the current message
 	mpz_class FileIV;			//the IV for the current file part
-	bool HasPub;				//Have received the public key (RSA or ECDH)
+	bool HasEphemeralPub;		//Have received the public key (RSA or ECDH)
+	bool HasStaticPub;			//Have the constant public key (RSA or ECDH)
 
 	//Client Vars
 	int Client;					//Socket for sending data
@@ -77,14 +79,23 @@ public:
 	//Encryption
 	RSA MyRSA;
 	AES MyAES;
-	mpz_class MyMod;
-	mpz_class MyE;
-	mpz_class MyD;
-	mpz_class ClientMod;
-	mpz_class ClientE;
 	mpz_class SymKey;
-	uint8_t CurveK[32], CurveP[32], CurvePPeer[32], SharedKey[32];
+	uint8_t SharedKey[32];
 	gmp_randclass* RNG;
+	//Ephemeral
+	mpz_class EphMyMod;
+	mpz_class EphMyE;
+	mpz_class EphMyD;
+	mpz_class EphClientMod;
+	mpz_class EphClientE;
+	uint8_t EphCurveK[32], EphCurveP[32], EphCurvePPeer[32];
+	//Static (Signing)
+	mpz_class StcMyMod;
+	mpz_class StcMyE;
+	mpz_class StcMyD;
+	mpz_class StcClientMod;
+	mpz_class StcClientE;
+	uint8_t StcCurveK[32], StcCurveP[32], StcCurvePPeer[32];
 
 	//FD SET
 	fd_set master;				//master file descriptor list
@@ -100,11 +111,13 @@ bool IsIP(string& IP)										//127.0.0.1
         unsigned char Periods = 0;
         char PerPos[5] = {0};								//PerPos[0] is -1, three periods, then PerPos[4] points one past the string
 		PerPos[0] = -1;
+		PerPos[4] = IP.length();
+		
         for(unsigned char i = 0; i < IP.length(); i++)
 		{
 			if(IP[i] == '.')
 			{
-				Periods++;
+				Periods += 1;
 				if(Periods <= 3 && i != 0 && i != IP.length()-1)
 					PerPos[Periods] = i;
 				else
@@ -113,13 +126,14 @@ bool IsIP(string& IP)										//127.0.0.1
 			else if(IP[i] < 48 || IP[i] > 57)
 				return false;
 		}
-		PerPos[4] = IP.length();
+		
 		int iTemp = 0;
 		for(int i = 0; i < 4; i++)
 		{
 			if((PerPos[i+1]-1) != PerPos[i])				//Check for two side by side periods
 			{
-				iTemp = atoi(IP.substr(PerPos[i]+1, PerPos[i+1] - (PerPos[i] + 1)).c_str());
+				const char* val = IP.substr(((signed char)PerPos[i]) + 1, PerPos[i+1] - (PerPos[i] + 1)).c_str();
+				iTemp = atoi(val);
 				if(iTemp > 255 || iTemp < 0)
 					return false;
 			}

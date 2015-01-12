@@ -36,7 +36,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 	MySocks[0] = Serv;												//first socket is the server FD
 	for(unsigned int i = 1; i < MAX_CLIENTS + 1; i++)				//assign all the empty ones to -1 (so we know they haven't been assigned a socket)
 		MySocks[i] = -1;
-	timeval zero = {0, 50};											//called zero for legacy reasons... assign timeval 50 milliseconds
+	timeval zero = {0, 50};											//called zero for legacy (lazy) reasons... assign timeval 50 microseconds
 	fdmax = Serv;													//fdmax is the highest file descriptor to check (because they are just ints)
 	
 	//		**-CLIENT-**
@@ -94,6 +94,28 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}
 		socketInfo.sin_port = htons(PeerPort);						//uses port PeerPort
 	}
+	
+	if(!HasStaticPub && CanOpenFile(ClntAddr + ".pub", ios_base::in))
+	{
+		if(UseRSA)
+		{
+			if(!LoadRSAPublicKey(ClntAddr + ".pub", StcClientMod, StcClientE))
+			{
+				StcClientMod = 0;
+				StcClientE = 0;
+			}
+			else
+				HasStaticPub = true;
+		}
+		else
+		{
+			if(!LoadCurvePublicKey(ClntAddr + ".pub", StcCurvePPeer))
+				memset((char*)StcCurvePPeer, 0, 32);
+			else
+				HasStaticPub = true;			
+		}
+	}
+	
 	//Progress checks
 	SentStuff = 0;
 	GConnected = false;												//GConnected allows us to tell if we have set all the initial values, but haven't begun the chat
@@ -107,13 +129,12 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		if(!GConnected && ConnectedClnt && ConnectedSrvr && SentStuff == 3)	//All values have been sent, then set, but we haven't begun! Start already!
 		{
 			GConnected = true;
-			cout << "\r          \r";
 			currntLength = 0;
 			CurPos = 0;
 			for(int j = 0; j < 512; j++)
 				OrigText[j] = '\0';
 
-			cout << "Message: ";
+			cout << "\nMessage: ";
 		}
 		
 		read_fds = master;											//assign read_fds back to the unchanged master
@@ -143,84 +164,181 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						perror("Accept");
 						return -4;
 					}
-					ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
 					
-					FD_SET(newSocket, &master); 					//add the newSocket FD to master set
 					for(unsigned int j = 1; j < MAX_CLIENTS + 1; j++)//assign an unassigned MySocks to newSocket
 					{
 						if(MySocks[j] == -1) 	//Not in use
 						{
+							FD_SET(newSocket, &master); 					//add the newSocket FD to master set
 							MySocks[j] = newSocket;
 							if(newSocket > fdmax)					//if the new file descriptor is greater than fdmax..
 								fdmax = newSocket;					//change fdmax to newSocket
 							break;
 						}
+						if(j == MAX_CLIENTS)
+							close(newSocket);
 					}
-					if(HasPub && !UseRSA)
-					{
-						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
-						unsigned char Hash[32] = {0};
-
-						curve25519_donna(SharedKey, CurveK, CurvePPeer);						
-						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 14, 2, Hash, 32);		//Use agreed upon salt
-						mpz_import(SymKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
-					}
+					
+					ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
+					cout << "Peer connected\n";
 				}
-				else if(!HasPub)
+				else if(!HasEphemeralPub)
 				{
 					if(UseRSA)
 					{
-						char* TempVA = new char[MAX_RSA_SIZE];
-						string TempVS;
-						nbytes = recvr(MySocks[i], TempVA, MAX_RSA_SIZE, 0);
-
-						for(unsigned int i = 0; i < (unsigned int)nbytes; i++)
-							TempVS.push_back(TempVA[i]);
-
-						try
+						char* SignedKey = new char[RSA_RECV_SIZE];
+						nbytes = recvr(MySocks[i], SignedKey, RSA_RECV_SIZE, 0);
+						if(HasStaticPub)
 						{
-							Import64(TempVS.substr(0, TempVS.find("|", 1)).c_str(), ClientMod);	//Modulus in Base64 in first half
+							int n = 0;
+							
+							//Hash Ephemeral Public Key
+							char* Hash = new char[32];
+							libscrypt_scrypt((unsigned char*)&SignedKey[16], MAX_RSA_SIZE * 2, (unsigned char*)SignedKey, 16, 16384, 8, 1, (unsigned char*)Hash, 32);
+		
+							//Reverse Signing To Verify Signature
+							mpz_class Sig;
+							mpz_import(Sig.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 2)]);
+							Sig = MyRSA.BigDecrypt(StcClientMod, StcClientE, Sig);
+							char* MyHash = new char[MAX_RSA_SIZE];
+							mpz_export(MyHash, (size_t*)&n, 1, 1, 0, 0, Sig.get_mpz_t());
+							
+							int verify = memcmp(Hash, MyHash, 32);
+							if(verify == 0)
+								cout << "Public key verified!\n";
+							else
+							{
+								cout << "--------------------------------------------------------------\n";
+								cout << "| Received Public Key Was Not Signed With Correct Static Key |\n";
+								cout << "--------------------------------------------------------------\n";
+								cout << "Continue chat and save new key? [y/N]\n";
+								char c = getch();
+								cout << c;
+								if(c != 'y' && c != 'Y')
+								{
+									close(MySocks[i]); // bye!
+									FD_CLR(MySocks[i], &master);
+									MySocks[i] = -1;
+									
+									ContinueLoop = false;
+									delete[] SignedKey;
+									delete[] MyHash;
+									delete[] Hash;
+									break;
+								}
+								else
+								{
+									if(SavePublic.empty())
+										SavePublic = ClntAddr + ".pub";
+									
+									mpz_import(StcClientMod.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 3)]);
+									mpz_import(StcClientE.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 4)]);
+									
+									char* PubKey64 = Export64(StcClientMod);
+									cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
+									delete[] PubKey64;
+									
+									MakeRSAPublicKey(SavePublic, StcClientMod, StcClientE);
+								}
+							}
+							delete[] MyHash;
+							delete[] Hash;
 						}
-						catch(int e)
+						else
 						{
-							cout << "The received modulus is bad\n";
-							close(Serv);
-							if(ConnectedClnt)
-								close(Client);
-							return -1;
+							cout << "\nCan't authenticate without static public key\n";
+							if(SavePublic.empty())
+								SavePublic = ClntAddr + ".pub";
+							
+							mpz_import(StcClientMod.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 3)]);
+							mpz_import(StcClientE.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 4)]);
+							
+							char* PubKey64 = Export64(StcClientMod);
+							cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
+							delete[] PubKey64;
+							
+							MakeRSAPublicKey(SavePublic, StcClientMod, StcClientE);
 						}
-
-						try
-						{
-							Import64(TempVS.substr(TempVS.find("|", 1)+1).c_str(), ClientE);	//Encryption key in Base64 in second half
-						}
-						catch(int e)
-						{
-							cout << "The received RSA encryption key is bad\n";
-							close(Serv);
-							if(ConnectedClnt)
-								close(Client);
-							return -1;
-						}
-						if(!SavePublic.empty())		//If we set the string for where to save their public key...
-							MakeRSAPublicKey(SavePublic, ClientMod, ClientE);		//SAVE THEIR PUBLIC KEY!
-
-						delete[] TempVA;
+						mpz_import(EphClientMod.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16]);
+						mpz_import(EphClientE.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + MAX_RSA_SIZE]);
+						delete[] SignedKey;
 					}
 					else
 					{
-						nbytes = recvr(MySocks[i], (char*)CurvePPeer, 32, 0);
-						if(!SavePublic.empty())
-							MakeCurvePublicKey(SavePublic, CurvePPeer);
+						char* SignedKey = new char[96];
+						nbytes = recvr(MySocks[i], SignedKey, 96, 0);
+						if(HasStaticPub)
+						{
+							int error = memcmp(&SignedKey[32], "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 32);
+							if(error != 0)
+							{
+								char* DerivedSalt = new char[32];
+								char* Hash = new char[32];
+								curve25519_donna((unsigned char*)DerivedSalt, StcCurveK, StcCurvePPeer);
+								libscrypt_scrypt((unsigned char*)SignedKey, 32, (unsigned char*)DerivedSalt, 32, 16384, 8, 1, (unsigned char*)Hash, 32);
+							
+								memset(DerivedSalt, 0, 32);
+								delete[] DerivedSalt;
+								int verify = memcmp(Hash, &SignedKey[32], 32);
+								if(verify == 0)
+									cout << "Public key verified!\n";
+								else
+								{
+									cout << "--------------------------------------------------------------\n";
+									cout << "| Received Public Key Was Not Signed With Correct Static Key |\n";
+									cout << "--------------------------------------------------------------\n";
+									cout << "Continue chat and save new key? [y/N]\n";
+									char c = getch();
+									cout << c;
+									if(c != 'y' && c != 'Y')
+									{
+										close(MySocks[i]); // bye!
+										FD_CLR(MySocks[i], &master);
+											ContinueLoop = false;
+										MySocks[i] = -1;
+									}
+									else
+									{
+										if(SavePublic.empty())
+											SavePublic = ClntAddr + ".pub";
+										
+										memcpy(StcCurvePPeer, &SignedKey[64], 32);
+										char* PubKey64 = Base64Encode((char*)StcCurvePPeer, 32);
+										cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
+										delete[] PubKey64;
+										
+										MakeCurvePublicKey(SavePublic, StcCurvePPeer);
+									}
+								}
+								delete[] Hash;
+							}
+							else
+								cout << "\nPeer didn't have public key to authenticate\n";
+						}
+						else
+						{
+							cout << "\nCan't authenticate without static public key\n";
+							if(SavePublic.empty())
+								SavePublic = ClntAddr + ".pub";
+								
+							memcpy(StcCurvePPeer, &SignedKey[64], 32);
+							char* PubKey64 = Base64Encode((char*)StcCurvePPeer, 32);
+							cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
+							delete[] PubKey64;
+							
+							MakeCurvePublicKey(SavePublic, StcCurvePPeer);
+						}
+						memcpy(EphCurvePPeer, SignedKey, 32);
+						delete[] SignedKey;
 
 						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
 						unsigned char Hash[32] = {0};
 
-						curve25519_donna(SharedKey, CurveK, CurvePPeer);						
-						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 14, 2, Hash, 32);		//Use agreed upon salt
+						curve25519_donna(SharedKey, EphCurveK, EphCurvePPeer);						
+						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 8, 1, Hash, 32);		//Use agreed upon salt
 						mpz_import(SymKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 					}
-					HasPub = true;
+					HasEphemeralPub = true;
 				}
 				else
 				{
@@ -235,7 +353,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							// connection closed
 							cout << "\r";
-							for(int j = 0; j < currntLength + 9; j++)
+							for(int j = 0; j < currntLength + 15; j++)
 								cout << " ";
 							cout << "\r";
 							cout <<"Peer " << i << " disconnected\n";
@@ -247,8 +365,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							perror("Recv");
 						}
 						close(MySocks[i]); // bye!
-						MySocks[i] = -1;
 						FD_CLR(MySocks[i], &master);
+						MySocks[i] = -1;
 						ContinueLoop = false;
 					}
 					else if(SentStuff == 2 && UseRSA)						//if SentStuff == 2, then we still need the symmetric key (should only get here if RSA)
@@ -263,7 +381,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						{
 							cout << "The received symmetric key is bad\n";
 						}
-						SymKey += MyRSA.BigDecrypt(MyMod, MyD, TempKey);								//They sent their sym. key with our public key. Decrypt it!
+						SymKey += MyRSA.BigDecrypt(EphMyMod, EphMyD, TempKey);								//They sent their sym. key with our public key. Decrypt it!
 						
 						mpz_class LargestAllowed = 0;
 						mpz_class One = 1;
@@ -297,13 +415,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 								continue;
 							}
 							
-							DropLine(Msg);
-							if(Sending != 1)
-								cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
-							else
-								cout << "\nFile Location: " << OrigText;
-							for(int setCur = 0; setCur < currntLength - CurPos; setCur++)	//set cursor position to what it previously was (for when arrow keys are handled)
-								cout << "\b";
+							DropEncMsg(Msg);
 						}
 						else if(buf[0] == 1)
 						{
@@ -318,7 +430,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								cout << "The received file request is corrupt\n";
+								DropAppMsg("The received file request is corrupt\n");
 								continue;
 							}
 
@@ -327,14 +439,14 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							int PlainSize = MyAES.Decrypt(Msg.c_str(), Msg.size(), PeerIV, SymKey, PlainText);
 							if(PlainSize == -1)
 							{
-								cout << "The received file request is bad\n";
+								DropAppMsg("The received file request is bad\n");
 								continue;
 							}
 							
 							FileLength =  __bswap_64(*((__uint64_t*)PlainText));
 							FileLoc = &PlainText[8];
 							
-							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes<y/N>";
+							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes [y/N]";
 							char c = getch();
 							cout << c;
 							if(c == 'y' || c == 'Y')
@@ -369,15 +481,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							else
 							{
 								Sending = 0;
-								cout << "\r";
-								for(int i = 0; i < currntLength + 15; i++)
-									cout << " ";
-								cout << "\rPeer rejected file. The transfer was cancelled.";
+								CurPos = 0;
+								currntLength = 0;
+								memset(OrigText, 0, 512);
+								DropAppMsg("\rPeer rejected file. The transfer was cancelled.");
 							}
-							cout << "\nMessage: ";
-							memset(OrigText, 0, 512);
-							CurPos = 0;
-							currntLength = 0;
 						}
 						else if(buf[0] == 3 && Sending == -1)
 						{
@@ -392,7 +500,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								cout << "The received file piece is bad\n";
+								DropAppMsg("The received file piece is bad\n");
 								Sending = 0;
 								continue;
 							}
@@ -415,11 +523,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		{
 			TryConnect(SendPublic);															//Lets try to change that
 		}
-		if(SentStuff == 1 && HasPub)														//We have established a connection and we have their keys!
+		if(SentStuff == 1 && HasEphemeralPub)														//We have established a connection and we have their keys!
 		{
 			if(UseRSA)
 			{
-				mpz_class Values = MyRSA.BigEncrypt(ClientMod, ClientE, SymKey);			//Encrypt The Symmetric Key With Their Public Key
+				mpz_class Values = MyRSA.BigEncrypt(EphClientMod, EphClientE, SymKey);		//Encrypt The Symmetric Key With Their Public Key
 				string MyValues = Export64(Values);											//Base 64
 				
 				while(MyValues.size() < RECV_SIZE)
@@ -543,41 +651,73 @@ void PeerToPeer::TryConnect(bool SendPublic)
 		return;
 
 	//Connect succeeded!!!
-	if(SendPublic)
+	if(UseRSA)
 	{
-		if(UseRSA)
+		char* SignedKey = new char[RSA_RECV_SIZE];
+		memset(SignedKey, 0, RSA_RECV_SIZE);
+		int n = 0;
+		
+		//Export Ephemeral Public Key
+		mpz_export(&SignedKey[16], (size_t*)&n, -1, 1, 0, 0, EphMyMod.get_mpz_t());
+		mpz_export(&SignedKey[16 + MAX_RSA_SIZE], (size_t*)&n, -1, 1, 0, 0, EphMyE.get_mpz_t());
+		
+		//Hash Ephemeral Public Key 
+		mpz_class Salt = RNG->get_z_bits(128);
+		mpz_export(SignedKey, (size_t*)&n, -1, 1, 0, 0, Salt.get_mpz_t());
+		char* Hash = new char[32];
+		libscrypt_scrypt((unsigned char*)&SignedKey[16], MAX_RSA_SIZE * 2, (unsigned char*)SignedKey, 16, 16384, 8, 1, (unsigned char*)Hash, 32);
+		
+		//Sign The Hash With Static Private Key
+		mpz_class GMPValue;
+		mpz_import(GMPValue.get_mpz_t(), 32, 1, 1, 0, 0, Hash);			//Import hash into GMP class so we can do math with it
+		GMPValue = MyRSA.BigEncrypt(StcMyMod, StcMyD, GMPValue);		//Encrypt hash with static private key
+		mpz_export(&SignedKey[16 + (MAX_RSA_SIZE * 2)], (size_t*)&n, -1, 1, 0, 0, GMPValue.get_mpz_t());
+		
+		if(SendPublic)
 		{
-			string TempValues = "";
-			string MyValues = "";
-
-			TempValues = Export64(MyMod);		//Base64 will save digits
-			MyValues = TempValues + "|";		//Pipe char to seperate keys
-
-			TempValues = Export64(MyE);
-			MyValues += TempValues;				//MyValues is equal to the string for the modulus + string for exp concatenated
-
-			while(MyValues.size() < MAX_RSA_SIZE)
-				MyValues.push_back('\0');
-
-			//Send My Public Key And My Modulus Because We Started The Connection
-			if(send(Client, MyValues.c_str(), MAX_RSA_SIZE, 0) < 0)
-			{
-				perror("Couldn't send public key");
-				return;
-			}
+			//Export Static Public Key (In case they need it)
+			mpz_export(&SignedKey[16 + (MAX_RSA_SIZE * 3)], (size_t*)&n, -1, 1, 0, 0, StcMyMod.get_mpz_t());
+			mpz_export(&SignedKey[16 + (MAX_RSA_SIZE * 4)], (size_t*)&n, -1, 1, 0, 0, StcMyE.get_mpz_t());
 		}
-		else
+		
+		//Send My Public Key And My Modulus Because We Started The Connection
+		if(send(Client, SignedKey, RSA_RECV_SIZE, 0) < 0)
 		{
-			if(send(Client, CurveP, 32, 0) < 0)
-			{
-				perror("Couldn't send public key");
-				return;
-			}
+			perror("Couldn't send public key");
+			return;
 		}
 	}
+	else
+	{
+		char* SignedKey = new char[96];
+		memcpy(SignedKey, EphCurveP, 32);							//Send ephemeral public key
+		if(HasStaticPub)
+		{
+			char* DerivedSalt = new char[32];
+			curve25519_donna((unsigned char*)DerivedSalt, StcCurveK, StcCurvePPeer);
+			libscrypt_scrypt((unsigned char*)EphCurveP, 32, (unsigned char*)DerivedSalt, 32, 16384, 8, 1, (unsigned char*)&SignedKey[32], 32);	//Attach signature of eph. public key if can
+			
+			memset(DerivedSalt, 0, 32);
+			delete[] DerivedSalt;
+		}
+		else
+			memset(&SignedKey[32], 0, 32);			//else, zeros
+		
+		if(SendPublic)
+			memcpy(&SignedKey[64], StcCurveP, 32);
+		
+		if(send(Client, SignedKey, 96, 0) < 0)
+		{
+			perror("Couldn't send public key");
+			
+			delete[] SignedKey;
+			return;
+		}
+		delete[] SignedKey;
+	}
 	
-	SentStuff = 1;			//We have sent our keys
+	SentStuff = 1;									//We have sent our keys
 	ConnectedClnt = true;
-	fprintf(stderr, "Waiting...");
+	fprintf(stderr, "Waiting For Peer's Response...\n");
 	return;
 }

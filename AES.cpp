@@ -108,9 +108,8 @@ int AES::Decrypt(const char* Cipher, unsigned int CipherLen, mpz_class& GMPIV, m
 		size_t Size;
 		char* KeyP = new char[32];
 		char* IV = new char[16];
-		mpz_export(KeyP, &Size, 1, 32, 1, 0, Key.get_mpz_t());
-		mpz_export(IV, &Size, 1, 16, 1, 0, GMPIV.get_mpz_t());
-		
+		mpz_export(KeyP, &Size, 1, 1, 1, 0, Key.get_mpz_t());
+		mpz_export(IV, &Size, 1, 1, 1, 0, GMPIV.get_mpz_t());
 		unsigned int l = DecryptNI(Cipher, CipherLen, IV, KeyP, PlainText);
 		memset(KeyP, 0, 32);
 		delete[] KeyP;

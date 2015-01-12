@@ -1,9 +1,9 @@
 CC=g++
-ACC=/usr/android-toolchain/bin/arm-linux-androideabi-g++
+ACC=/usr/android-toolchain-21/bin/arm-linux-androideabi-g++
 CFLAGS=-Wl,-Bstatic -lgmpxx -lgmp -lscrypt -Wl,-Bdynamic -Wno-unused-result
-ACFLAGS=-I/usr/android-toolchain/include -L/usr/android-toolchain/lib -DANDROID
+ACFLAGS=-I/usr/android-toolchain-21/include -L/usr/android-toolchain-21/lib -fPIE -pie -DANDROID
 OUT=./bin/CryptoChat
-AOUT=./bin/AndroidChat
+AOUT=./bin/AndroidChat.jpg
 
 make:
 	nasm -f elf64 -o AES-NI.o AES-NI.asm

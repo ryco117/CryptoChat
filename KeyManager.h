@@ -12,6 +12,14 @@ extern "C"
 #include "AES.cpp"
 #include "base64.h"
 
+#ifndef SCRYPT_WORK_VALUE
+	#ifdef ANDROID
+		#define SCRYPT_WORK_VALUE 32768
+	#else
+		#define SCRYPT_WORK_VALUE 1048576
+	#endif
+#endif
+
 /* ---------------------- Fully implementing Curve25519 keys! -------------------------- */
 bool LoadCurvePublicKey(string FileLoc, uint8_t Point[32])
 {
@@ -55,33 +63,41 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t Key[32], const char* Passwd)
 		if(strlen(Passwd))
 		{
 			File.read(Salt64, 24);
+			
+			uint64_t Scrypt_N_Value;
+			File.read((char*)&Scrypt_N_Value, 8);
+			uint32_t Scrypt_r_Value;
+			File.read((char*)&Scrypt_r_Value, 4);
+			uint32_t Scrypt_p_Value;
+			File.read((char*)&Scrypt_p_Value, 4);
+			
 			File.read(IVStr, 24);
 			char* Salt;
-			int SaltLen;								//Should equal 16
+			unsigned int SaltLen;								//Should equal 16
 			try
 			{
 				Salt = Base64Decode(Salt64, SaltLen);
-				Import64(IVStr, IV);
 			}
 			catch(int e)
 			{
 				cout << "Error: Incorrect password or format\n";
+				delete[] Salt;
 				return false;
 			}
 			if(SaltLen != 16)
 			{
 				cout << "Error: Incorrect password or format\n";
+				delete[] Salt;
 				return false;
 			}
-
-			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			Import64(IVStr, IV);
+			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, Scrypt_N_Value, Scrypt_r_Value, Scrypt_p_Value, (unsigned char*)Hash, 32);
 			delete[] Salt;
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
 			memset(Hash, 0, 32);
 		}
-		
 		unsigned int n = FileLength - File.tellg();
 		char* Cipher = new char[n];
 		File.read(Cipher, n);
@@ -90,8 +106,8 @@ bool LoadCurvePrivateKey(string FileLoc, uint8_t Key[32], const char* Passwd)
 		char* Original = new char[n];
 		if(FinalKey != 0)
 		{
-			n = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
-			if(n == -1)
+			int dec_len = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
+			if(dec_len == -1)
 			{
 				cout << "Error: Incorrect password or format\n";
 				memset(Original, 0, n);
@@ -158,7 +174,7 @@ void MakeCurvePrivateKey(string FileLoc, uint8_t Key[32], const char* Passwd, ch
 		
 		if(strlen(Passwd))
 		{
-			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, SCRYPT_WORK_VALUE, 8, 1, (unsigned char*)Hash, 32);
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
@@ -178,6 +194,14 @@ void MakeCurvePrivateKey(string FileLoc, uint8_t Key[32], const char* Passwd, ch
 			char* I = Export64(IV);
 			
 			File.write(S, 24);																//Write the salt in base64
+			
+			uint64_t Scrypt_N_Value = SCRYPT_WORK_VALUE;
+			File.write((char*)&Scrypt_N_Value, 8);
+			uint32_t Scrypt_r_Value = 8;
+			File.write((char*)&Scrypt_r_Value, 4);
+			uint32_t Scrypt_p_Value = 1;
+			File.write((char*)&Scrypt_p_Value, 4);
+			
 			File.write(I, 24);																//Write the IV in base64
 			File.write(Cipher, 48);
 			
@@ -261,9 +285,17 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 		if(strlen(Passwd))
 		{
 			File.read(Salt64, 24);
+			
+			uint64_t Scrypt_N_Value;
+			File.read((char*)&Scrypt_N_Value, 8);
+			uint32_t Scrypt_r_Value;
+			File.read((char*)&Scrypt_r_Value, 4);
+			uint32_t Scrypt_p_Value;
+			File.read((char*)&Scrypt_p_Value, 4);
+			
 			File.read(IVStr, 24);
 			char* Salt;
-			int SaltLen;								//Should equal 16
+			unsigned int SaltLen;								//Should equal 16
 			try
 			{
 				Salt = Base64Decode(Salt64, SaltLen);
@@ -272,15 +304,17 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 			catch(int e)
 			{
 				cout << "Error: Incorrect password or format\n";
+				delete[] Salt;
 				return false;
 			}
 			if(SaltLen != 16)
 			{
 				cout << "Error: Incorrect password or format\n";
+				delete[] Salt;
 				return false;
 			}
 
-			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, Scrypt_N_Value, Scrypt_r_Value, Scrypt_p_Value, (unsigned char*)Hash, 32);
 			delete[] Salt;
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
@@ -297,11 +331,11 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 		Original[n] = 0;
 		if(FinalKey != 0)
 		{
-			n = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
-			if(n == -1)
+			int dec_len = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
+			if(dec_len == -1)
 			{
 				cout << "Error: Incorrect password or format\n";
-				memset(Original, 0, sizeof(Original));
+				memset(Original, 0, n);
 				delete[] Original;
 				delete[] Cipher;
 				File.close();
@@ -377,7 +411,7 @@ void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd, char*
 		
 		if(strlen(Passwd))
 		{
-			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, 16384, 14, 2, (unsigned char*)Hash, 32);
+			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, SCRYPT_WORK_VALUE, 8, 1, (unsigned char*)Hash, 32);
 			mpz_import(FinalKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
 
 			//Hash needs to be DELETED!
@@ -408,6 +442,14 @@ void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd, char*
 			char* I = Export64(IV);
 			mpz_xor(FinalKey.get_mpz_t(), FinalKey.get_mpz_t(), FinalKey.get_mpz_t());		//Should zero out all data of our hash/sym key
 			File.write(S, 24);																//Write the salt in base64
+			
+			uint64_t Scrypt_N_Value = SCRYPT_WORK_VALUE;
+			File.write((char*)&Scrypt_N_Value, 8);
+			uint32_t Scrypt_r_Value = 8;
+			File.write((char*)&Scrypt_r_Value, 4);
+			uint32_t Scrypt_p_Value = 1;
+			File.write((char*)&Scrypt_p_Value, 4);
+			
 			File.write(I, 24);																//Write the IV in base64
 			delete[] S;
 			delete[] I;
@@ -427,5 +469,17 @@ void MakeRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd, char*
 	else
 		cout << "Error: Couldn't open " << FileLoc << endl;
 	return;
+}
+
+bool CanOpenFile(string FileLoc, ios_base::openmode mode = ios_base::in | ios_base::out)
+{
+	fstream File(FileLoc.c_str(), mode);
+	if(File.is_open())
+	{
+		File.close();
+		return true;
+	}
+	else
+		return false;
 }
 #endif
