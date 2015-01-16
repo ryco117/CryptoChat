@@ -48,8 +48,3 @@ How To Build
 **x86-64**
 
 make
-
-
-**Android**
-
-make android
