@@ -253,11 +253,44 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							mpz_import(StcClientMod.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 3)]);
 							mpz_import(StcClientE.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 4)]);
 							
-							char* PubKey64 = Export64(StcClientMod);
-							cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
-							delete[] PubKey64;
+							//Now that we have their key (which needs to be verified over a secure line [in person...]) check that the ephemeral was actually signed with it
+							//Hash Ephemeral Public Key
+							int n = 0;
+							char* Hash = new char[32];
+							libscrypt_scrypt((unsigned char*)&SignedKey[16], MAX_RSA_SIZE * 2, (unsigned char*)SignedKey, 16, 16384, 8, 1, (unsigned char*)Hash, 32);
 							
-							MakeRSAPublicKey(SavePublic, StcClientMod, StcClientE);
+							//Reverse Signing To Verify Signature
+							mpz_class Sig;
+							mpz_import(Sig.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 2)]);
+							Sig = MyRSA.BigDecrypt(StcClientMod, StcClientE, Sig);
+							cout << "here\n";
+							char* MyHash = new char[MAX_RSA_SIZE];
+							cout << "here\n";
+							mpz_export(MyHash, (size_t*)&n, 1, 1, 0, 0, Sig.get_mpz_t());
+							cout << "here\n";
+							
+							int verify = memcmp(Hash, MyHash, 32);
+							if(verify != 0)
+							{
+								cout << "Received ephemeral key was not signed by received static key, exiting\n";
+								close(MySocks[i]); // bye!
+								FD_CLR(MySocks[i], &master);
+								MySocks[i] = -1;
+								cout << "here?\n";
+								ContinueLoop = false;
+								delete[] SignedKey;
+								delete[] MyHash;
+								delete[] Hash;
+								break;
+							}
+							else
+							{
+								char* PubKey64 = Export64(StcClientMod);
+								cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
+								delete[] PubKey64;
+								
+								MakeRSAPublicKey(SavePublic, StcClientMod, StcClientE);
+							}
 						}
 						mpz_import(EphClientMod.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16]);
 						mpz_import(EphClientE.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + MAX_RSA_SIZE]);
@@ -320,7 +353,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							cout << "\nCan't authenticate without static public key\n";
 							if(SavePublic.empty())
 								SavePublic = ClntAddr + ".pub";
-								
+							
 							memcpy(StcCurvePPeer, &SignedKey[64], 32);
 							char* PubKey64 = Base64Encode((char*)StcCurvePPeer, 32);
 							cout << "Saving received peer static public key " << PubKey64 << " to " << SavePublic << endl;
@@ -335,8 +368,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						unsigned char Hash[32] = {0};
 
 						curve25519_donna(SharedKey, EphCurveK, EphCurvePPeer);						
-						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 8, 1, Hash, 32);		//Use agreed upon salt
-						mpz_import(SymKey.get_mpz_t(), 32, 1, 1, 0, 0, Hash);
+						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 8, 1, SymKey, 32);		//Use agreed upon salt
 					}
 					HasEphemeralPub = true;
 				}
@@ -345,7 +377,6 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 					char buf[RECV_SIZE];	//RECV_SIZE is the max possible incoming data (2048 byte file part with 24 byte iv and leading byte)
 					memset(buf, 0, RECV_SIZE);
 					nbytes = recvr(MySocks[i], buf, RECV_SIZE, 0);
-					
 					if(nbytes <= 0)		//handle data from a client
 					{
 						// got error or connection closed by client
@@ -364,68 +395,80 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							cout << "\r         \r";
 							perror("Recv");
 						}
-						close(MySocks[i]); // bye!
+						close(MySocks[i]);		//bye!
 						FD_CLR(MySocks[i], &master);
 						MySocks[i] = -1;
 						ContinueLoop = false;
 					}
-					else if(SentStuff == 2 && UseRSA)						//if SentStuff == 2, then we still need the symmetric key (should only get here if RSA)
+					else if(SentStuff == 2 && UseRSA)								//if SentStuff == 2, then we still need the symmetric key (should only get here if RSA)
 					{
 						string ClntKey = buf;
-						mpz_class TempKey;
+						mpz_class PeerKey;
 						try
 						{
-							Import64(ClntKey.c_str(), TempKey);
+							Import64(ClntKey.c_str(), PeerKey);
 						}
 						catch(int e)
 						{
 							cout << "The received symmetric key is bad\n";
 						}
-						SymKey += MyRSA.BigDecrypt(EphMyMod, EphMyD, TempKey);								//They sent their sym. key with our public key. Decrypt it!
+						//SymKey
+						PeerKey = MyRSA.BigDecrypt(EphMyMod, EphMyD, PeerKey);						//They sent their sym. key with our public key. Decrypt it!
+						uint8_t* TempSpace = new uint8_t[ClntKey.size()];							//Guarantee enough room for GMP to export into
+						mpz_export(TempSpace, NULL, 1, 1, 0, 0, PeerKey.get_mpz_t());
+						mpz_xor(PeerKey.get_mpz_t(), PeerKey.get_mpz_t(), PeerKey.get_mpz_t());
 						
-						mpz_class LargestAllowed = 0;
-						mpz_class One = 1;
-						mpz_mul_2exp(LargestAllowed.get_mpz_t(), One.get_mpz_t(), 256);					//Largest allowed sym key is equal to (1 * 2^256) - 1
-						mpz_mod(SymKey.get_mpz_t(), SymKey.get_mpz_t(), LargestAllowed.get_mpz_t());	//Modulus by largest 256 bit value ensures within range after adding keys!
+						for(int i = 0; i < 32; i++)
+							SymKey[i] ^= TempSpace[i];
+						
 						SentStuff = 3;
 					}
 					else
 					{
 						string Msg = "";	//lead byte for data id | Initialization Vector			| data length identifier	| main data
 											//-------------------------------------------------------------------------------------------------------------------------------------
-											//0 = msg				| IV64_LEN chars for encoded IV	| __int32 message length	| Enc. message
-											//1 = file request		| IV64_LEN chars for encoded IV | __int32 information length| Enc. __uint64 file length & file name
+											//0 = msg				| IV64_LEN chars for encoded IV	| uint32 message length		| Enc. message
+											//1 = file request		| IV64_LEN chars for encoded IV | uint32 information length	| Enc. uint64 file length & file name
 											//2 = request answer 	|								| (none, always 1 byte)		| response (not encrypted because a MitM would know anyway)
-											//3 = file piece		| IV64_LEN chars for encoded IV	| __int32 file piece length	| Enc. file piece
-						
+											//3 = file piece		| IV64_LEN chars for encoded IV	| uint32 file piece length	| Enc. file piece
 						if(buf[0] == 0)
 						{
-							nbytes = ntohl(*((__int32_t*)&buf[1 + IV64_LEN]));
+							nbytes = ntohl(*((uint32_t*)&buf[1 + IV64_LEN]));
 							for(unsigned int i = 0; i < 1 + IV64_LEN + 4 + (unsigned int)nbytes; i++)	//If we do a simple assign, the string will stop reading at a null terminator ('\0')
 								Msg.push_back(buf[i]);													//so manually push back values in array buf...
 							
 							try
 							{
-								Import64(Msg.substr(1, IV64_LEN).c_str(), PeerIV);
+								Base64Decode(Msg.substr(1, IV64_LEN).c_str(), (char*)PeerIV, 16);
 								Msg = Msg.substr(1 + IV64_LEN + 4);
 							}
 							catch(int e)
 							{
-								cout << "The received message is corrupt\n";
+								cout << "The received message is corrupt: " << e << endl;
 								continue;
 							}
 							
 							DropEncMsg(Msg);
 						}
-						else if(buf[0] == 1)
+						else if(buf[0] == 1)			//if File Request
 						{
-							nbytes = ntohl(*((__int32_t*)&buf[1 + IV64_LEN]));
+							if(Sending & 128)			//Can't receive two files simultaneously
+							{
+								char* Reject = new char[RECV_SIZE];
+								memset(Reject, 0, RECV_SIZE);				//Don't send over 1KB of recently freed memory over network...
+								Reject[0] = 2;
+								Reject[1] = 'n';
+								send(Client, Reject, RECV_SIZE, 0);
+								delete[] Reject;
+								continue;
+							}
+							nbytes = ntohl(*((uint32_t*)&buf[1 + IV64_LEN]));
 							for(unsigned int i = 0; i < 1 + IV64_LEN + 4 + (unsigned int)nbytes; i++)
 								Msg.push_back(buf[i]);
 							
 							try
 							{
-								Import64(Msg.substr(1, IV64_LEN).c_str(), PeerIV);
+								Base64Decode(Msg.substr(1, IV64_LEN).c_str(), (char*)PeerIV, 16);
 								Msg = Msg.substr(1 + IV64_LEN + 4);
 							}
 							catch(int e)
@@ -443,7 +486,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 								continue;
 							}
 							
-							FileLength =  __bswap_64(*((__uint64_t*)PlainText));
+							FileLength =  __bswap_64(*((uint64_t*)PlainText));
 							FileLoc = &PlainText[8];
 							
 							cout << "\rSave " << FileLoc << ", " << FileLength << " bytes [y/N]";
@@ -453,13 +496,11 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							{
 								c = 'y';
 								BytesRead = 0;
-								Sending = -1;		//Receive file mode
+								Sending |= 128;			//Receive file mode
 							}
 							else
-							{
 								c = 'n';
-								Sending = 0;
-							}
+							
 							char* Accept = new char[RECV_SIZE];
 							memset(Accept, 0, RECV_SIZE);				//Don't send over 1KB of recently freed memory over network...
 							Accept[0] = 2;
@@ -471,37 +512,38 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							delete[] PlainText;
 							delete[] Accept;
 						}
-						else if(buf[0] == 2 && Sending == 2)
+						else if(buf[0] == 2 && (Sending & 2))
 						{
 							if(buf[1] == 'y')
 							{
-								Sending = 3;
+								Sending &= 128;
+								Sending |= 4;
 								FilePos = 0;
 							}
 							else
 							{
-								Sending = 0;
+								Sending &= 128;
 								CurPos = 0;
 								currntLength = 0;
 								memset(OrigText, 0, 512);
 								DropAppMsg("\rPeer rejected file. The transfer was cancelled.");
 							}
 						}
-						else if(buf[0] == 3 && Sending == -1)
+						else if(buf[0] == 3 && (Sending & 128))
 						{
-							nbytes = ntohl(*((__int32_t*)&buf[1 + IV64_LEN]));
+							nbytes = ntohl(*((uint32_t*)&buf[1 + IV64_LEN]));
 							for(unsigned int i = 0; i < 1 + IV64_LEN + 4 + (unsigned int)nbytes; i++)
 								Msg.push_back(buf[i]);
 							
 							try
 							{
-								Import64(Msg.substr(1, IV64_LEN).c_str(), FileIV);
+								Base64Decode(Msg.substr(1, IV64_LEN).c_str(), (char*)FileIV, 16);
 								Msg = Msg.substr(1 + IV64_LEN + 4);
 							}
 							catch(int e)
 							{
 								DropAppMsg("The received file piece is bad\n");
-								Sending = 0;
+								Sending &= 127;
 								continue;
 							}
 							ReceiveFile(Msg);
@@ -512,23 +554,26 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 		}//End For Loop for sockets
 		if(kbhit())		//Check for keypress
 		{
-			if(GConnected && Sending != 2)													//So nothing happens until we are ready...
+			if(GConnected && (Sending & 2) == 0)											//So nothing happens until we are ready...
 				ParseInput();
 			else
 				getch();																	//And keypresses before hand arent read when we are.
 		}
-		if(Sending == 3)
+		if(Sending & 4)
 			SendFilePt2();
 		if(!ConnectedClnt)																	//Not connected yet?!?
 		{
 			TryConnect(SendPublic);															//Lets try to change that
 		}
-		if(SentStuff == 1 && HasEphemeralPub)														//We have established a connection and we have their keys!
+		if(SentStuff == 1 && HasEphemeralPub)												//We have established a connection and we have their keys!
 		{
 			if(UseRSA)
 			{
-				mpz_class Values = MyRSA.BigEncrypt(EphClientMod, EphClientE, SymKey);		//Encrypt The Symmetric Key With Their Public Key
-				string MyValues = Export64(Values);											//Base 64
+				mpz_class GMPSymKey;
+				mpz_import(GMPSymKey.get_mpz_t(), 32, 1, 1, 0, 0, SymKey);
+				mpz_class Values = MyRSA.BigEncrypt(EphClientMod, EphClientE, GMPSymKey);		//Encrypt The Symmetric Key With Their Public Key
+				mpz_xor(GMPSymKey.get_mpz_t(), GMPSymKey.get_mpz_t(), GMPSymKey.get_mpz_t());	//Clear
+				string MyValues = Export64(Values);												//Base 64
 				
 				while(MyValues.size() < RECV_SIZE)
 					MyValues.push_back('\0');
@@ -662,8 +707,7 @@ void PeerToPeer::TryConnect(bool SendPublic)
 		mpz_export(&SignedKey[16 + MAX_RSA_SIZE], (size_t*)&n, -1, 1, 0, 0, EphMyE.get_mpz_t());
 		
 		//Hash Ephemeral Public Key 
-		mpz_class Salt = RNG->get_z_bits(128);
-		mpz_export(SignedKey, (size_t*)&n, -1, 1, 0, 0, Salt.get_mpz_t());
+		sfmt_fill_small_array64(sfmt, (uint64_t*)SignedKey, 2);					//Generate 16 byte salt
 		char* Hash = new char[32];
 		libscrypt_scrypt((unsigned char*)&SignedKey[16], MAX_RSA_SIZE * 2, (unsigned char*)SignedKey, 16, 16384, 8, 1, (unsigned char*)Hash, 32);
 		

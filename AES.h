@@ -8,7 +8,8 @@
 #include <fstream>
 #include <time.h>
 #include <stdlib.h>
-#include <gmpxx.h>
+
+#include "SFMT/SFMT.h"
 
 using namespace std;
 
@@ -399,11 +400,10 @@ inline unsigned int PaddedSize(unsigned int x)
 	return (x + 16 - (x % 16));
 }
 
-static mpz_class DEFAULTIV = mpz_class(0);
 class AES
 {
 public:
-	void Encrypt(const char* Msg, unsigned int MsgLen, mpz_class& GMPIV, mpz_class& Key, char* CipherText);
-	int Decrypt(const char* Cipher, unsigned int CipherLen, mpz_class& GMPIV, mpz_class& Key, char* PlainText);
+	void Encrypt(const char* Msg, unsigned int MsgLen, uint8_t* IV, uint8_t* Key, char* CipherText);
+	int Decrypt(const char* Cipher, unsigned int CipherLen, uint8_t* IV, uint8_t* Key, char* PlainText);
 };
 #endif

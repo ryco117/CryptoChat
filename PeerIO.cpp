@@ -9,7 +9,8 @@ const char* GetName(const char* file);
 
 void PeerToPeer::SendFilePt1()
 {
-	Sending = 2;
+	Sending &= 128;						//Clear all but don't change receive status
+	Sending |= 2;						//Set request bit
 	FileToSend = OrigText;
 	fstream File(OrigText, ios::in);
 	if(File.is_open())
@@ -29,8 +30,9 @@ void PeerToPeer::SendFilePt1()
 		memcpy(EncName, (void*)(&Length), 8);
 		memcpy(&EncName[8], Name, strlen(Name));
 		
-		mpz_class IV = RNG->get_z_bits(128);
-		string IVStr = Export64(IV);
+		uint8_t IV[16];
+		sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+		string IVStr = Base64Encode((char*)IV, 16);
 		while(IVStr.size() < IV64_LEN)
 			IVStr.push_back('\0');
 		
@@ -45,7 +47,7 @@ void PeerToPeer::SendFilePt1()
 		delete[] EncName;
 		if(send(Client, FileRequest, RECV_SIZE, 0) < 0)
 		{
-			Sending = 0;
+			Sending &= 128;
 			perror("File request failure");
 		}
 		else
@@ -56,7 +58,7 @@ void PeerToPeer::SendFilePt1()
 	}
 	else
 	{
-		Sending = 0;
+		Sending &= 128;
 		cout << "\r";
 		for(int i = 0; i < currntLength + 15; i++)
 			cout << " ";
@@ -84,7 +86,7 @@ void PeerToPeer::SendFilePt2()
 			FileLeft = FILE_PIECE_LEN;
 		else
 		{
-			Sending = 0;	//file is done after this
+			Sending &= 128;				//file is done after this
 			memset(OrigText, 0, 512);
 			CurPos = 0;
 			currntLength = 0;
@@ -102,14 +104,15 @@ void PeerToPeer::SendFilePt2()
 		File.read(Data, FileLeft);
 		FilePos += FileLeft;
 		
-		mpz_class IV = RNG->get_z_bits(128);
-		string SIV = Export64(IV);
-		while(SIV.size() < IV64_LEN)
-			SIV.push_back('\0');
+		uint8_t IV[16];
+		sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+		string IVStr = Base64Encode((char*)IV, 16);
+		while(IVStr.size() < IV64_LEN)
+			IVStr.push_back('\0');
 		
 		MyAES.Encrypt(Data, FileLeft, IV, SymKey, Data);
 		FilePiece[0] = 3;
-		memcpy(&FilePiece[1], SIV.c_str(), IV64_LEN);
+		memcpy(&FilePiece[1], IVStr.c_str(), IV64_LEN);
 		LenPadded = htonl(LenPadded);
 		memcpy(&FilePiece[1 + IV64_LEN], &LenPadded, 4);
 		LenPadded = htonl(LenPadded);
@@ -119,7 +122,7 @@ void PeerToPeer::SendFilePt2()
 		if(n == -1)
 		{
 			perror("\nSendFilePt2");
-			Sending = 0;
+			Sending &= 128;
 		}
 		delete[] FilePiece;
 		memset(Data, 0, LenPadded);
@@ -140,7 +143,7 @@ void PeerToPeer::ReceiveFile(string& Msg)
 		DataSize = MyAES.Decrypt(Msg.c_str(), Msg.length(), FileIV, SymKey, Data);
 		if(DataSize == -1)
 		{
-			Sending = 0;
+			Sending &= 127;
 			memset(Data, 0, DataSize);
 			delete[] Data;
 			cout << "There was an issue decrypting file\n";
@@ -154,7 +157,7 @@ void PeerToPeer::ReceiveFile(string& Msg)
 		BytesRead += DataSize;
 		if(BytesRead == FileLength)
 		{
-			Sending = 0;
+			Sending &= 127;
 			cout << "\r";
 			for(int i = 0; i < currntLength + 15; i++)
 				cout << " ";
@@ -167,7 +170,7 @@ void PeerToPeer::ReceiveFile(string& Msg)
 	}
 	else
 	{
-		Sending = 0;
+		Sending &= 127;
 		cout << "\r";
 		for(int i = 0; i < currntLength + 15; i++)
 			cout << " ";
@@ -191,7 +194,7 @@ void PeerToPeer::DropEncMsg(string pBuffer)
 	memset(print, 0, pBuffer.length());
 	delete[] print;
 	
-	if(Sending != 1)
+	if((Sending & 1) == 0)
 		cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
 	else
 		cout << "\nFile Location: " << OrigText;
@@ -208,7 +211,7 @@ void PeerToPeer::DropAppMsg(string Msg)
 		cout << " ";
 	cout << "\r";
 	cout << Msg;													//Print What we received
-	if(Sending != 1)
+	if((Sending & 1) == 0)
 		cout << "\nMessage: " << OrigText;							//Print what we already had typed (creates appearance of dropping current line)
 	else
 		cout << "\nFile Location: " << OrigText;
@@ -246,7 +249,7 @@ void PeerToPeer::ParseInput()
 {
 	unsigned char c = getch();
 	string TempValues = "";
-	mpz_class IV;
+	uint8_t IV[16];
 
 	if(c == '\n')	//return
 	{
@@ -255,11 +258,11 @@ void PeerToPeer::ParseInput()
 		{
 			if(TempValues == "*exit*")
 			{
-				if(Sending != 1)								//We were typing messages, and want to exit
+				if((Sending & 1) == 0)							//We were typing messages, and want to exit
 					ContinueLoop = false;
 				else											//We were going to send a file, but want to cancel
 				{
-					Sending = 0;
+					Sending &= 128;
 					cout << "\r";
 					for(int i = 0; i < currntLength + 15; i++)
 						cout << " ";
@@ -269,9 +272,9 @@ void PeerToPeer::ParseInput()
 					currntLength = 0;
 				}
 			}
-			else if(TempValues == "*file*" && Sending == 0)		//We were typing messages, but want to send a file
+			else if(TempValues == "*file*" && (Sending & 127) == 0)		//We were typing messages, but want to send a file
 			{
-				Sending = 1;
+				Sending |= 1;
 				cout << "\r";
 				for(int i = 0; i < currntLength + 9; i++)
 					cout << " ";
@@ -280,13 +283,14 @@ void PeerToPeer::ParseInput()
 				CurPos = 0;
 				currntLength = 0;
 			}
-			else if(Sending == 1)
+			else if(Sending & 1)
 				SendFilePt1();
 			else
 			{
-				IV = RNG->get_z_bits(128);
+				sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
 				CipherMsg = "x";
-				CipherMsg += Export64(IV);
+				char* IVStr = Base64Encode((char*)IV, 16);
+				CipherMsg += IVStr;
 				while(CipherMsg.size() < 1 + IV64_LEN)
 					CipherMsg.push_back('\0');
 				
@@ -303,6 +307,7 @@ void PeerToPeer::ParseInput()
 				for(int i = 0; i < CipherSize; i++)
 					CipherMsg.push_back(Cipher[i]);
 				
+				delete[] IVStr;
 				delete[] Cipher;
 				SendMessage();
 			}
@@ -360,39 +365,38 @@ void PeerToPeer::ParseInput()
 
 		if(currntLength == 512)	//reached max allowed chars per message
 		{
-			if(Sending == 0)
+			TempValues = OrigText;
+			if((Sending & 1) == 0)
 			{
-				TempValues = OrigText;
-				IV = RNG->get_z_bits(128);
+				sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
 				CipherMsg = "x";
-				CipherMsg += Export64(IV);
-				while(CipherMsg.size() < IV64_LEN+1)
+				char* IVStr = Base64Encode((char*)IV, 16);
+				CipherMsg += IVStr;
+				while(CipherMsg.size() < 1 + IV64_LEN)
 					CipherMsg.push_back('\0');
 				
 				CipherMsg[0] = 0;
-				unsigned int CipherSize = PaddedSize(TempValues.length());
+				unsigned int CipherSize = PaddedSize(512);
 				char* Cipher = new char[CipherSize];
-				MyAES.Encrypt(TempValues.c_str(), TempValues.length(), IV, SymKey, Cipher);
+				MyAES.Encrypt(OrigText, TempValues.length(), IV, SymKey, Cipher);
 				
 				//Network Endian
 				CipherMsg.push_back((char)((__uint32_t)CipherSize >> 24));
 				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 16) & 0xFF));
 				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 8) & 0xFF));
 				CipherMsg.push_back((char)((__uint32_t)CipherSize & 0xFF));
-				CipherMsg += Cipher;
+				for(int i = 0; i < CipherSize; i++)
+					CipherMsg.push_back(Cipher[i]);
 				
+				delete[] IVStr;
 				delete[] Cipher;
 				SendMessage();
 			}
-			else if(Sending == 1)
+			else
 			{
-				Sending = 0;
-				cout << "\r";
-				for(int i = 0; i < currntLength + 15; i++)
-					cout << " ";
-				cout << "\rFile location is too large...\nMessage: ";
-				for(int i = 0; i < 512; i++)
-					OrigText[i] = '\0';
+				Sending &= 128;
+				DropAppMsg("\rFile location is too large...");
+				memset(OrigText, 0, 512);
 			}
 		}
 

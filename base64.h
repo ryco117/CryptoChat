@@ -103,9 +103,69 @@ char* Base64Decode(const char* Data, unsigned int& len)
 		Result[i * 3 + 1] = char((k & 0xFF00) >> 8);
 		Result[i * 3 + 2] = char(k & 0xFF);
 	}
-	len = (strlen(Data) / 4) * 3 - r;
-	Result[len] = 0;
+	if(&len != NULL)
+	{
+		len = (strlen(Data) / 4) * 3 - r;
+		Result[len] = 0;
+	}
 	return Result;
+}
+
+void Base64Decode(const char* Data, char* Return, unsigned int maxLen)
+{
+	char* LookUp = new char[strlen(Data)];
+	char r = 0;
+	for(int i = 0; i < strlen(Data); i++)
+	{
+		if(Data[i] == '=')
+		{
+			LookUp[i] = 0;
+			r++;
+		}
+		else if(Data[i] != '\0')
+		{
+			char j = 0;
+			while(j < 64)
+			{
+				if(Data[i] == BaseTable[j])
+				{
+					LookUp[i] = j;
+					break;
+				}
+				j++;
+			}
+			if(j == 64)
+			{
+				memset(LookUp, 0, strlen(Data));
+				delete[] LookUp;
+				throw -1;
+				return;
+			}
+		}
+	}
+	
+	if(((strlen(Data) / 4) * 3) - r > maxLen)
+	{
+		throw -2;
+		return;
+	}
+
+	char* Result = new char[(strlen(Data) / 4) * 3 + 1];
+	for(int i = 0; i * 4 < strlen(Data); i++)
+	{
+		int k = (unsigned int)LookUp[i * 4] << 18;
+		k += (unsigned int)LookUp[i * 4 + 1] << 12;
+		k += (unsigned int)LookUp[i * 4 + 2] << 6;
+		k += (unsigned int)LookUp[i * 4 + 3];
+		
+		Result[i * 3] = char((k & 0xFF0000) >> 16);
+		Result[i * 3 + 1] = char((k & 0xFF00) >> 8);
+		Result[i * 3 + 2] = char(k & 0xFF);
+	}
+	unsigned int len = (strlen(Data) / 4) * 3 - r;
+	memcpy(Return, Result, len);
+	memset(Result, 0, len);
+	return;
 }
 
 char* Export64(mpz_class& BigNum)

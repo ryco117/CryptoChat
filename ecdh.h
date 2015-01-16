@@ -2,6 +2,7 @@
 #define ECDSA_H
 
 #include <gmpxx.h>
+#include "SFMT/SFMT.h"
 #include "curve25519-donna.c"
 
 static const uint8_t Curve25519Base[32] = {9};
@@ -186,16 +187,9 @@ void ECC_CreateKeys(mpz_class& K, mpz_class& X, mpz_class& Y, mpz_class a, mpz_c
 	return;
 }
 
-void ECC_Curve25519_Create(uint8_t pub[32], uint8_t k[32], gmp_randclass& rng)
+void ECC_Curve25519_Create(uint8_t pub[32], uint8_t k[32], sfmt_t& sfmt)
 {
-	mpz_class Val = rng.get_z_bits(256);					//32 bytes
-	/*if(dbg)
-		Val = "0x77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a";
-	else
-		Val = "0x5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb";*/
-
-	int n = 0;
-	mpz_export(k, (size_t*)&n, 1, 1, 0, 0, Val.get_mpz_t());
+	sfmt_fill_small_array64(&sfmt, (uint64_t*)k, 4);
 	k[0] &= 248;
 	k[31] &= 127;
 	k[31] |= 64;

@@ -47,8 +47,8 @@ public:
 	std::string FileLoc;		//string for saving file
 	unsigned int FileLength;	//length of the file
 	unsigned int BytesRead;		//bytes that we have received for the file
-	mpz_class PeerIV;			//the initialization vector for the current message
-	mpz_class FileIV;			//the IV for the current file part
+	uint8_t PeerIV[16];			//the initialization vector for the current message
+	uint8_t FileIV[16];			//the IV for the current file part
 	bool HasEphemeralPub;		//Have received the public key (RSA or ECDH)
 	bool HasStaticPub;			//Have the constant public key (RSA or ECDH)
 
@@ -63,7 +63,8 @@ public:
 	char OrigText[512];			//unencrypted message (or file loc) that we have typed
 	int currntLength;			//Length of the message we have typed in plain text
 	int CurPos;					//the cursors position (isn't very useful because arrow keys don't work)
-	int Sending;				//What stage are we in sending? 0 = none, positive = trying to send message, negative = receiving
+	uint8_t Sending;			//What stage are we in sending? 0 = none, first bit set = typing file location, second bit set = sent request waiting for response
+								//third bit set = sending file, final bit set = receiving file
 	std::string FileToSend;		//String showing the file we are sending
 	unsigned int FilePos;		//Position in the file we are sending
 
@@ -79,9 +80,10 @@ public:
 	//Encryption
 	RSA MyRSA;
 	AES MyAES;
-	mpz_class SymKey;
+	uint8_t SymKey[32];
 	uint8_t SharedKey[32];
 	gmp_randclass* RNG;
+	sfmt_t* sfmt;
 	//Ephemeral
 	mpz_class EphMyMod;
 	mpz_class EphMyE;

@@ -18,7 +18,7 @@ public:
 	void BigPrime(mpz_class& p, gmp_randclass& rng, unsigned long sz, unsigned long c);
 	void KeyGenerator(mpz_class& Private, mpz_class& Public, mpz_class& Mod, gmp_randclass& rng);
 	
-	mpz_class BigEncrypt(mpz_class& Modulus, mpz_class& Key, mpz_class Msg);
-	mpz_class BigDecrypt(mpz_class& Modulus, mpz_class& Key, mpz_class Cypher);
+	mpz_class BigEncrypt(mpz_class& Modulus, mpz_class& Key, mpz_class& Msg);
+	mpz_class BigDecrypt(mpz_class& Modulus, mpz_class& Key, mpz_class& Cipher);
 };
 #endif
