@@ -263,7 +263,7 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 	if(File.is_open())
 	{
 		char Salt64[25] = {0};
-		char IVStr[25] = {0};
+		char IV64[25] = {0};
 		uint8_t* IV;
 		uint8_t FinalKey[32];
 
@@ -283,23 +283,23 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 			uint32_t Scrypt_p_Value;
 			File.read((char*)&Scrypt_p_Value, 4);
 			
-			File.read(IVStr, 24);
+			File.read(IV64, 24);
 			char* Salt;
 			unsigned int Len;								//Should equal 16
 			try
 			{
 				Salt = Base64Decode(Salt64, Len);
-				IV = (uint8_t*)Base64Decode(IVStr, Len);
+				IV = (uint8_t*)Base64Decode(IV64, Len);
 			}
 			catch(int e)
 			{
-				cout << "Error: Incorrect password or format\n";
+				cout << "Error: Incorrect password or format: 1\n";
 				delete[] Salt;
 				return false;
 			}
 			if(Len != 16)
 			{
-				cout << "Error: Incorrect password or format\n";
+				cout << "Error: Incorrect password or format: 2\n";
 				delete[] Salt;
 				return false;
 			}
@@ -307,21 +307,21 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 			libscrypt_scrypt((const unsigned char*)Passwd, strlen(Passwd), (const unsigned char*)Salt, 16, Scrypt_N_Value, Scrypt_r_Value, Scrypt_p_Value, FinalKey, 32);
 			delete[] Salt;
 		}
-
 		unsigned int n = FileLength - File.tellg();
 		char* Cipher = new char[n];
 		File.read(Cipher, n);
 		
 		AES crypt;
-		char* Original = new char[n+1];
+		char* Original = new char[n + 1];
 		Original[n] = 0;
-		if(FinalKey != 0)
+		if(strlen(Passwd))
 		{
 			int dec_len = crypt.Decrypt(Cipher, n, IV, FinalKey, Original);
 			if(dec_len == -1)
 			{
-				cout << "Error: Incorrect password or format\n";
+				cout << "Error: Incorrect password or format: 3\n";
 				memset(Original, 0, n);
+				memset(FinalKey, 0, 32);
 				delete[] Original;
 				delete[] Cipher;
 				File.close();
@@ -334,7 +334,7 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 		
 		if(strncmp(Original, "crypto-key-rsa\n", 15))		//Check for proper format
 		{
-			cout << "Error: Incorrect password or format\n";
+			cout << "Error: Incorrect password or format: 4\n";
 			memset(Original, 0, n);
 			delete[] Original;
 			delete[] Cipher;
@@ -347,7 +347,7 @@ bool LoadRSAPrivateKey(string FileLoc, mpz_class& Dec, const char* Passwd)
 		}
 		catch(int e)
 		{
-			cout << "Error: Incorrect password or format\n";
+			cout << "Error: Incorrect password or format: 5\n";
 			memset(Original, 0, n);
 			delete[] Original;
 			delete[] Cipher;

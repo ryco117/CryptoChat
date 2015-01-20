@@ -6,12 +6,12 @@
 extern "C"
 {
 	bool AESNI();
-	void EncryptNI(const char* Text, unsigned int size, uint8_t* IV, uint8_t* Key, char* Buffer);
-	int DecryptNI(const char* Cipher, unsigned int size, uint8_t* IV, uint8_t* Key, char* Buffer);
+	void EncryptNI(const char* Text, unsigned int size, const uint8_t* IV, const uint8_t* Key, char* Buffer);
+	int DecryptNI(const char* Cipher, unsigned int size, const uint8_t* IV, const uint8_t* Key, char* Buffer);
 }
 #endif
 
-void AES::Encrypt(const char* Msg, unsigned int MsgLen, uint8_t* IV, uint8_t* Key, char* CipherText)
+void AES::Encrypt(const char* Msg, unsigned int MsgLen, const uint8_t* IV, const uint8_t* Key, char* CipherText)
 {
 	#ifndef ANDROID
 	if(AESNI())
@@ -83,7 +83,7 @@ void AES::Encrypt(const char* Msg, unsigned int MsgLen, uint8_t* IV, uint8_t* Ke
 }
 
 //The same as encrypt but in reverse...
-int AES::Decrypt(const char* Cipher, unsigned int CipherLen, uint8_t* IV, uint8_t* Key, char* PlainText)
+int AES::Decrypt(const char* Cipher, unsigned int CipherLen, const uint8_t* IV, const uint8_t* Key, char* PlainText)
 {
 	#ifndef ANDROID
 	if(AESNI())

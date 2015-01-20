@@ -20,11 +20,11 @@ void PeerToPeer::SendFilePt1()
 		
 		const char* Name = GetName(OrigText);
 		File.seekg(0, File.end);
-		__uint64_t Length = File.tellg();
+		uint64_t Length = File.tellg();
 		Length = __bswap_64(Length);
 
 		unsigned int EncLength = 8 + strlen(Name);
-		__uint32_t LenPadded = PaddedSize(EncLength);
+		uint32_t LenPadded = PaddedSize(EncLength);
 		char* EncName = new char[LenPadded];
 		memset(EncName, 0, LenPadded);
 		memcpy(EncName, (void*)(&Length), 8);
@@ -300,10 +300,10 @@ void PeerToPeer::ParseInput()
 				MyAES.Encrypt(TempValues.c_str(), TempValues.length(), IV, SymKey, Cipher);
 				
 				//Network Endian
-				CipherMsg.push_back((char)((__uint32_t)CipherSize >> 24));
-				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 16) & 0xFF));
-				CipherMsg.push_back((char)(((__uint32_t)CipherSize >> 8) & 0xFF));
-				CipherMsg.push_back((char)((__uint32_t)CipherSize & 0xFF));
+				CipherMsg.push_back((char)((uint32_t)CipherSize >> 24));
+				CipherMsg.push_back((char)(((uint32_t)CipherSize >> 16) & 0xFF));
+				CipherMsg.push_back((char)(((uint32_t)CipherSize >> 8) & 0xFF));
+				CipherMsg.push_back((char)((uint32_t)CipherSize & 0xFF));
 				for(int i = 0; i < CipherSize; i++)
 					CipherMsg.push_back(Cipher[i]);
 				

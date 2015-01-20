@@ -176,11 +176,16 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							break;
 						}
 						if(j == MAX_CLIENTS)
+						{
 							close(newSocket);
+							newSocket = -1;
+						}
 					}
-					
-					ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
-					cout << "Peer connected\n";
+					if(newSocket != -1)
+					{
+						ConnectedSrvr = true;							//Passed All Tests, We Can Safely Say We Connected
+						cout << "Peer connected\n";
+					}
 				}
 				else if(!HasEphemeralPub)
 				{
@@ -263,11 +268,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							mpz_class Sig;
 							mpz_import(Sig.get_mpz_t(), MAX_RSA_SIZE, -1, 1, 0, 0, &SignedKey[16 + (MAX_RSA_SIZE * 2)]);
 							Sig = MyRSA.BigDecrypt(StcClientMod, StcClientE, Sig);
-							cout << "here\n";
 							char* MyHash = new char[MAX_RSA_SIZE];
-							cout << "here\n";
 							mpz_export(MyHash, (size_t*)&n, 1, 1, 0, 0, Sig.get_mpz_t());
-							cout << "here\n";
 							
 							int verify = memcmp(Hash, MyHash, 32);
 							if(verify != 0)
@@ -276,7 +278,6 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 								close(MySocks[i]); // bye!
 								FD_CLR(MySocks[i], &master);
 								MySocks[i] = -1;
-								cout << "here?\n";
 								ContinueLoop = false;
 								delete[] SignedKey;
 								delete[] MyHash;
@@ -305,13 +306,13 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							int error = memcmp(&SignedKey[32], "\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 32);
 							if(error != 0)
 							{
-								char* DerivedSalt = new char[32];
+								char* DerivedKey = new char[32];
 								char* Hash = new char[32];
-								curve25519_donna((unsigned char*)DerivedSalt, StcCurveK, StcCurvePPeer);
-								libscrypt_scrypt((unsigned char*)SignedKey, 32, (unsigned char*)DerivedSalt, 32, 16384, 8, 1, (unsigned char*)Hash, 32);
+								curve25519_donna((unsigned char*)DerivedKey, StcCurveK, StcCurvePPeer);
+								libscrypt_scrypt((unsigned char*)DerivedKey, 32, (unsigned char*)SignedKey, 32, 16384, 8, 1, (unsigned char*)Hash, 32);
 							
-								memset(DerivedSalt, 0, 32);
-								delete[] DerivedSalt;
+								memset(DerivedKey, 0, 32);
+								delete[] DerivedKey;
 								int verify = memcmp(Hash, &SignedKey[32], 32);
 								if(verify == 0)
 									cout << "Public key verified!\n";
@@ -364,10 +365,10 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						memcpy(EphCurvePPeer, SignedKey, 32);
 						delete[] SignedKey;
 
-						unsigned char SaltStr[16] = {'\x43','\x65','\x12','\x94','\x83','\x05','\x73','\x37','\x65','\x93','\x85','\x64','\x51','\x65','\x64','\x94'};
-						unsigned char Hash[32] = {0};
-
-						curve25519_donna(SharedKey, EphCurveK, EphCurvePPeer);						
+						unsigned char SaltStr[16] = {'\x1A','\x9B','\xCC','\x46','\xF7','\x67','\xDF','\x3B','\x6D','\x8A','\xDB','\xB6','\x20','\xCB','\xE8','\xD4'};		//Nothing-up-my-sleeve pseudo-random salt derived from i^i in binary converted to hex string
+																																											//1A9BCC46F767DF3B6D8ADBB620CBE8D4 -> 0.0011010100110111100110001000110111101110110011111011111001110110110110110001010110110111011011000100000110010111110100011010100
+																																											//								   -> 0.20787957635076190854695561983497877003
+						curve25519_donna(SharedKey, EphCurveK, EphCurvePPeer);
 						libscrypt_scrypt(SharedKey, 32, SaltStr, 16, 16384, 8, 1, SymKey, 32);		//Use agreed upon salt
 					}
 					HasEphemeralPub = true;
@@ -410,9 +411,8 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 						}
 						catch(int e)
 						{
-							cout << "The received symmetric key is bad\n";
+							cout << "The received symmetric key is corrupt\n";
 						}
-						//SymKey
 						PeerKey = MyRSA.BigDecrypt(EphMyMod, EphMyD, PeerKey);						//They sent their sym. key with our public key. Decrypt it!
 						uint8_t* TempSpace = new uint8_t[ClntKey.size()];							//Guarantee enough room for GMP to export into
 						mpz_export(TempSpace, NULL, 1, 1, 0, 0, PeerKey.get_mpz_t());
@@ -482,7 +482,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							int PlainSize = MyAES.Decrypt(Msg.c_str(), Msg.size(), PeerIV, SymKey, PlainText);
 							if(PlainSize == -1)
 							{
-								DropAppMsg("The received file request is bad\n");
+								DropAppMsg("The received file request is corrupt\n");
 								continue;
 							}
 							
@@ -496,7 +496,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							{
 								c = 'y';
 								BytesRead = 0;
-								Sending |= 128;			//Receive file mode
+								Sending |= 128;							//Receive file mode
 							}
 							else
 								c = 'n';
@@ -542,7 +542,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 							}
 							catch(int e)
 							{
-								DropAppMsg("The received file piece is bad\n");
+								DropAppMsg("The received file piece is corrupt\n");
 								Sending &= 127;
 								continue;
 							}
@@ -581,7 +581,7 @@ int PeerToPeer::StartServer(const int MAX_CLIENTS, bool SendPublic, string SaveP
 				//Send The Encrypted Symmetric Key
 				if(send(Client, MyValues.c_str(), RECV_SIZE, 0) < 0)
 				{
-					perror("Connect failure");
+					perror("Couldn't send encrypted symmetric key");
 					return -5;
 				}
 				SentStuff = 2;																//We have given them our symmetric key
@@ -737,12 +737,12 @@ void PeerToPeer::TryConnect(bool SendPublic)
 		memcpy(SignedKey, EphCurveP, 32);							//Send ephemeral public key
 		if(HasStaticPub)
 		{
-			char* DerivedSalt = new char[32];
-			curve25519_donna((unsigned char*)DerivedSalt, StcCurveK, StcCurvePPeer);
-			libscrypt_scrypt((unsigned char*)EphCurveP, 32, (unsigned char*)DerivedSalt, 32, 16384, 8, 1, (unsigned char*)&SignedKey[32], 32);	//Attach signature of eph. public key if can
+			char* DerivedKey = new char[32];
+			curve25519_donna((unsigned char*)DerivedKey, StcCurveK, StcCurvePPeer);
+			libscrypt_scrypt((unsigned char*)DerivedKey, 32, (unsigned char*)EphCurveP, 32, 16384, 8, 1, (unsigned char*)&SignedKey[32], 32);	//Attach signature of eph. public key if can
 			
-			memset(DerivedSalt, 0, 32);
-			delete[] DerivedSalt;
+			memset(DerivedKey, 0, 32);
+			delete[] DerivedKey;
 		}
 		else
 			memset(&SignedKey[32], 0, 32);			//else, zeros

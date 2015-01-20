@@ -212,7 +212,7 @@ public:
 				p[col][row] = (unsigned char)num;
 	}
 	
-	mat4(unsigned char* m)
+	mat4(const unsigned char* m)
 	{
 		for(int col = 0; col < 4; col++)
 			for(int row = 0; row < 4; row++)
@@ -403,7 +403,7 @@ inline unsigned int PaddedSize(unsigned int x)
 class AES
 {
 public:
-	void Encrypt(const char* Msg, unsigned int MsgLen, uint8_t* IV, uint8_t* Key, char* CipherText);
-	int Decrypt(const char* Cipher, unsigned int CipherLen, uint8_t* IV, uint8_t* Key, char* PlainText);
+	void Encrypt(const char* Msg, unsigned int MsgLen, const uint8_t* IV, const uint8_t* Key, char* CipherText);
+	int Decrypt(const char* Cipher, unsigned int CipherLen, const uint8_t* IV, const uint8_t* Key, char* PlainText);
 };
 #endif

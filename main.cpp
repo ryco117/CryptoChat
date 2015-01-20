@@ -90,9 +90,9 @@ int main(int argc, char* argv[])
 	//Options
 	bool SendPublic = true;
 	string LoadPublic = "";
-	string LoadKeys = "Keys";
+	string LoadKeys = "MyKeys";
 	string SavePublic = "";
-	string OutputFiles = "Keys";
+	string OutputFiles = "MyKeys";
 	
 	for(unsigned int i = 1; i < argc; i++)						//What arguments were we provided with? How should we handle them
 	{
@@ -236,6 +236,9 @@ int main(int argc, char* argv[])
 					MakeCurvePrivateKey(PrivKeyName, MyPTP.StcCurveK, Passwd1, SaltStr, TempIV);
 					MakeCurvePublicKey(PubKeyName, MyPTP.StcCurveP);
 				}
+				
+				delete[] SaltStr;
+				delete[] TempIV;
 				break;
 			}
 		}
@@ -358,6 +361,8 @@ void SeedAll(gmp_randclass& rng, sfmt_t& sfmt)
 	}
 	sfmt_init_by_array(&sfmt, seed, 20);
 	fclose(random);
+	memset(seed, 0, sizeof(uint32_t) * 20);
+	delete[] seed;
 }
 
 void GetPassword(char* buff, int buffSize)
