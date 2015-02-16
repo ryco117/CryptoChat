@@ -31,7 +31,7 @@ void PeerToPeer::SendFilePt1()
 		memcpy(&EncName[8], Name, strlen(Name));
 		
 		uint8_t IV[16];
-		sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+		fprng->GenerateBlocks(IV, 1);
 		string IVStr = Base64Encode((char*)IV, 16);
 		while(IVStr.size() < IV64_LEN)
 			IVStr.push_back('\0');
@@ -105,7 +105,7 @@ void PeerToPeer::SendFilePt2()
 		FilePos += FileLeft;
 		
 		uint8_t IV[16];
-		sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+		fprng->GenerateBlocks(IV, 1);
 		string IVStr = Base64Encode((char*)IV, 16);
 		while(IVStr.size() < IV64_LEN)
 			IVStr.push_back('\0');
@@ -287,7 +287,7 @@ void PeerToPeer::ParseInput()
 				SendFilePt1();
 			else
 			{
-				sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+				fprng->GenerateBlocks(IV, 1);
 				CipherMsg = "x";
 				char* IVStr = Base64Encode((char*)IV, 16);
 				CipherMsg += IVStr;
@@ -368,7 +368,7 @@ void PeerToPeer::ParseInput()
 			TempValues = OrigText;
 			if((Sending & 1) == 0)
 			{
-				sfmt_fill_small_array64(sfmt, (uint64_t*)IV, 2);
+				fprng->GenerateBlocks(IV, 1);
 				CipherMsg = "x";
 				char* IVStr = Base64Encode((char*)IV, 16);
 				CipherMsg += IVStr;

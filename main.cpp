@@ -24,7 +24,7 @@
 					   MAX_RSA_SIZE + (MAX_RSA_SIZE + MAX_RSA_SIZE))//Max size of RSA public key exchange (16384 bit RSA).
 																	//salt, ephemeral key (2048 byte Mod, 2048 byte e value), 2048 byte signature, static key
 
-#include "SFMT/SFMT.h"
+#include "fortuna.cpp"
 #include "curve25519-donna.c"
 #include "ecdh.h"
 #include "PeerToPeer.cpp"
@@ -33,7 +33,7 @@
 
 using namespace std;
 
-void SeedAll(gmp_randclass& rng, sfmt_t& sfmt);
+void SeedAll(gmp_randclass& rng, FortunaPRNG& fprng);
 void PrintIP();
 void GetPassword(char* buff, int buffSize);
 
@@ -65,13 +65,13 @@ Input Argument Examples:\n\
 int main(int argc, char* argv[])
 {
 	//This will be used for all randomness for the rest of the execution... seed well
-	sfmt_t sfmt;
+	FortunaPRNG fprng;
 	gmp_randclass rng(gmp_randinit_default);			//Define a gmp_randclass, initialize with default value
-	SeedAll(rng, sfmt);										//Pass randclass to function to seed it for more random values
+	SeedAll(rng, fprng);								//Pass randclass to function to seed it for more random values
 	
 	PeerToPeer MyPTP;
 	MyPTP.RNG = &rng;
-	MyPTP.sfmt = &sfmt;
+	MyPTP.fprng = &fprng;
 	MyPTP.BindPort = 5001;
 	MyPTP.PeerPort = 5001;
 	MyPTP.ProxyPort = 0;
@@ -85,7 +85,7 @@ int main(int argc, char* argv[])
 	//Encryption Stuff
 	RSA NewRSA;
 	AES Cipher;
-	sfmt_fill_small_array64(&sfmt, (uint64_t*)MyPTP.SymKey, 4);	//Create a 256 bit long random value as our key
+	fprng.GenerateBlocks(MyPTP.SymKey, 2);				//Create a 256 bit long random value as our key
 	
 	//Options
 	bool SendPublic = true;
@@ -94,7 +94,7 @@ int main(int argc, char* argv[])
 	string SavePublic = "";
 	string OutputFiles = "MyKeys";
 	
-	for(unsigned int i = 1; i < argc; i++)						//What arguments were we provided with? How should we handle them
+	for(unsigned int i = 1; i < argc; i++)				//What arguments were we provided with? How should we handle them
 	{
 		string Arg = string(argv[i]);
 		if((Arg == "-ip" || Arg == "--ip-address") && i+1 < argc)
@@ -191,7 +191,7 @@ int main(int argc, char* argv[])
 		if(MyPTP.UseRSA)
 			NewRSA.KeyGenerator(MyPTP.StcMyD, MyPTP.StcMyE, MyPTP.StcMyMod, rng);
 		else
-			ECC_Curve25519_Create(MyPTP.StcCurveP, MyPTP.StcCurveK, sfmt);
+			ECC_Curve25519_Create(MyPTP.StcCurveP, MyPTP.StcCurveK, fprng);
 		
 		string PubKeyName = OutputFiles + ".pub";
 		string PrivKeyName = OutputFiles + ".priv";
@@ -222,9 +222,9 @@ int main(int argc, char* argv[])
 			else
 			{
 				char* SaltStr = new char[16];
-				sfmt_fill_small_array64(&sfmt, (uint64_t*)SaltStr, 2);
+				fprng.GenerateBlocks(SaltStr, 1);
 				uint8_t* TempIV = new uint8_t[16];
-				sfmt_fill_small_array64(&sfmt, (uint64_t*)TempIV, 2);
+				fprng.GenerateBlocks(TempIV, 1);
 
 				if(MyPTP.UseRSA)
 				{
@@ -306,7 +306,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		ECC_Curve25519_Create(MyPTP.EphCurveP, MyPTP.EphCurveK, sfmt);
+		ECC_Curve25519_Create(MyPTP.EphCurveP, MyPTP.EphCurveK, fprng);
 		StcPubKey64 = Base64Encode((char*)MyPTP.StcCurveP, 32);
 	}
 
@@ -341,7 +341,7 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-void SeedAll(gmp_randclass& rng, sfmt_t& sfmt)
+void SeedAll(gmp_randclass& rng, FortunaPRNG& fprng)
 {
 	//Properly Seed rand()
 	FILE* random;
@@ -359,7 +359,7 @@ void SeedAll(gmp_randclass& rng, sfmt_t& sfmt)
 		srand(seed[i]); 		//seed the default random number generator
 		rng.seed(seed[i]);		//seed the GMP random number generator
 	}
-	sfmt_init_by_array(&sfmt, seed, 20);
+	fprng.Seed((unsigned char*)seed, sizeof(uint32_t) * 20);
 	fclose(random);
 	memset(seed, 0, sizeof(uint32_t) * 20);
 	delete[] seed;

@@ -1,12 +1,13 @@
 CryptoChat
 ==========
 
-A secure, terminal based chat program that uses ECC Curve25519 or 4096 bit RSA keys to exchange a
-256 bit AES key, which is used for the rest of the chat. The AES is done through the intel AES-NI instructions if they are available, else, my C++ wrapper.
-GMP is for large number arithmetic. 
-The public and private keys generated can be stored to files to be reused. The private key may be encrypted
-with 256 bit AES using a randomly generated IV and a key derived from a password using scrypt with
-a random salt. Enjoy top-notch, uber-level secure chats (most often about security, you know it's
+A secure, terminal based chat program that uses Curve25519 or 4096 bit RSA keys to exchange a
+256 bit AES key, which is used for the rest of the chat. AES is done through the Intel AES-NI instructions if they are available (using the code from my AES-Asm project), else, my C++ wrapper.
+GMP is used for large number arithmetic regarding RSA encryption only.
+The public and private keys generated are automatically stored to files to be reused. The private key may be encrypted
+with 256 bit AES using a randomly generated IV and a key derived from a password using libscrypt with
+a random salt. Random numbers (other than ones concerning RSA) are generated using my Fortuna implementation. More information on that can be found at that project's page.
+Enjoy top-notch, uber-level secure chats (most often about security, you know it's
 true :P ).
 
 Arguments List

@@ -707,7 +707,7 @@ void PeerToPeer::TryConnect(bool SendPublic)
 		mpz_export(&SignedKey[16 + MAX_RSA_SIZE], (size_t*)&n, -1, 1, 0, 0, EphMyE.get_mpz_t());
 		
 		//Hash Ephemeral Public Key 
-		sfmt_fill_small_array64(sfmt, (uint64_t*)SignedKey, 2);					//Generate 16 byte salt
+		fprng->GenerateBlocks(SignedKey, 1);					//Generate 16 byte salt
 		char* Hash = new char[32];
 		libscrypt_scrypt((unsigned char*)&SignedKey[16], MAX_RSA_SIZE * 2, (unsigned char*)SignedKey, 16, 16384, 8, 1, (unsigned char*)Hash, 32);
 		

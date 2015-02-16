@@ -83,7 +83,7 @@ public:
 	uint8_t SymKey[32];
 	uint8_t SharedKey[32];
 	gmp_randclass* RNG;
-	sfmt_t* sfmt;
+	FortunaPRNG* fprng;
 	//Ephemeral
 	mpz_class EphMyMod;
 	mpz_class EphMyE;

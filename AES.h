@@ -5,11 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <fstream>
-#include <time.h>
 #include <stdlib.h>
-
-#include "SFMT/SFMT.h"
 
 using namespace std;
 
