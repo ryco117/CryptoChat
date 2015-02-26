@@ -1,11 +1,7 @@
 #ifndef MYAES
 #define MYAES
 
-#include <cmath>
 #include <iostream>
-#include <sstream>
-#include <string>
-#include <stdlib.h>
 
 using namespace std;
 

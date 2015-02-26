@@ -343,7 +343,7 @@ int main(int argc, char* argv[])
 
 void SeedAll(gmp_randclass& rng, FortunaPRNG& fprng)
 {
-	//Properly Seed rand()
+	//Properly Seed
 	FILE* random;
 	uint32_t* seed = new uint32_t[20];
 	random = fopen ("/dev/urandom", "r");		//Unix provides it, why not use it

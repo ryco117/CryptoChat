@@ -1,6 +1,7 @@
 #ifndef KEYMANAGER
 #define KEYMANAGER
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <sstream>
 #include <gmpxx.h>
