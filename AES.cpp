@@ -2,7 +2,7 @@
 #define AES_CPP
 #include "AES.h"
 
-#ifndef ANDROID
+#ifndef ARM
 extern "C"
 {
 	bool AESNI();
@@ -13,7 +13,7 @@ extern "C"
 
 void AES::Encrypt(const char* Msg, unsigned int MsgLen, const uint8_t* IV, const uint8_t* Key, char* CipherText)
 {
-	#ifndef ANDROID
+	#ifndef ARM
 	if(AESNI())
 	{
 		EncryptNI(Msg, MsgLen, IV, Key, CipherText);
@@ -85,7 +85,7 @@ void AES::Encrypt(const char* Msg, unsigned int MsgLen, const uint8_t* IV, const
 //The same as encrypt but in reverse...
 int AES::Decrypt(const char* Cipher, unsigned int CipherLen, const uint8_t* IV, const uint8_t* Key, char* PlainText)
 {
-	#ifndef ANDROID
+	#ifndef ARM
 	if(AESNI())
 	{
 		unsigned int l = DecryptNI(Cipher, CipherLen, IV, Key, PlainText);
