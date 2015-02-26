@@ -14,7 +14,7 @@ extern "C"
 #include "base64.h"
 
 #ifndef SCRYPT_WORK_VALUE
-	#ifdef ANDROID
+	#ifdef ARM
 		#define SCRYPT_WORK_VALUE 32768
 	#else
 		#define SCRYPT_WORK_VALUE 1048576

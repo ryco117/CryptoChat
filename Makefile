@@ -5,7 +5,5 @@ OUT=./bin/CryptoChat
 make:
 	nasm -f elf64 -o AES-NI.o AES-NI.asm
 	$(CC) -o $(OUT) AES-NI.o main.cpp $(CFLAGS)
-
-all:
-	nasm -f elf64 -o AES-NI.o AES-NI.asm
-	$(CC) -o $(OUT) AES-NI.o main.cpp $(CFLAGS)
+arm:
+	$(CC) -o $(OUT) main.cpp -DARM $(CFLAGS)
